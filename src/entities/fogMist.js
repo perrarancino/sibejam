@@ -1,12 +1,15 @@
 /**
  * Динамическая система дымки и живого тумана (Fog of War & Atmospheric Mist).
- * Устраняет статичный круг освещения: края света колышутся живыми клубами тумана,
- * а над землей плывут полупрозрачные клубящиеся частицы дымки.
+ * Устраняет любые черные провалы у ног Агаты:
+ * 1. Вокруг героини свет кристально чистый и яркий.
+ * 2. Туман начинается на расстоянии и колышется живыми клубами и щупальцами (шум Перлина).
+ * 3. На границе света клубы дымки озаряются теплым золотым отсветом.
+ * 4. Парящие частицы используют аддитивное смешивание, поэтому никогда не создают темных пятен.
  */
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
 export class FogMistManager {
-  constructor(scene, fieldSize = 34) {
+  constructor(scene, fieldSize = 36) {
     this.scene = scene;
     this.fieldSize = fieldSize;
     this.group = new THREE.Group();
@@ -17,9 +20,9 @@ export class FogMistManager {
   }
 
   /**
-   * Анимированный шейдерный слой тумана прямо над землей.
-   * Граница света органически искажается процедурным шумом (перлин/симплекс),
-   * создавая клубящиеся щупальца дымки вместо плоского круга.
+   * Анимированный приземный туман войны.
+   * Зона прямо вокруг игрока (r < 3.8м) полностью прозрачна (alpha = 0),
+   * а дальше туман накатывает живыми волнообразными клубами.
    */
   createVolumetricGroundMist() {
     const vertexShader = `
@@ -40,7 +43,7 @@ export class FogMistManager {
       uniform float uTime;
       uniform float uLanternRadius;
 
-      // 2D Шум для клубящегося тумана
+      // 2D Шум Simplex для клубящегося тумана
       vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
       vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
       vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -73,39 +76,41 @@ export class FogMistManager {
         vec2 worldXZ = vWorldPosition.xz;
         float dist = distance(worldXZ, uPlayerPos.xz);
 
-        // Двухслойный анимированный шум (ветер гонит дымку)
-        vec2 wind1 = vec2(uTime * 0.07, uTime * 0.035);
-        vec2 wind2 = vec2(-uTime * 0.05, uTime * 0.08);
-        float n1 = snoise(worldXZ * 0.16 + wind1);
-        float n2 = snoise(worldXZ * 0.32 + wind2) * 0.5;
-        float mistFlow = n1 + n2;
+        // Двухслойный анимированный ветер тумана
+        vec2 wind1 = vec2(uTime * 0.08, uTime * 0.04);
+        vec2 wind2 = vec2(-uTime * 0.05, uTime * 0.07);
+        float n1 = snoise(worldXZ * 0.14 + wind1);
+        float n2 = snoise(worldXZ * 0.28 + wind2) * 0.5;
+        float mistNoise = (n1 + n2); // диапазон примерно [-1.2, 1.2]
 
-        // Динамическое искажение границы света клубами тумана
-        float perturbedDist = dist - mistFlow * 2.4;
+        // Граница света динамически искажается клубами тумана
+        // Вблизи Агаты (dist < clearRadius) туман СТРОГО равен 0 (никаких черных пятен у ног!)
+        float clearRadius = uLanternRadius * 0.65 + mistNoise * 1.4;
+        clearRadius = max(2.5, clearRadius);
 
-        // Рассеивание тумана около Агаты:
-        // Вблизи Агаты дымка полупрозрачная, вдалеке — глубокая темная мгла
-        float innerClear = smoothstep(1.8, uLanternRadius * 1.35, perturbedDist);
+        // Нарастание тумана от границы света во внешнюю тьму
+        float fogDensity = smoothstep(clearRadius, clearRadius + 3.2, dist);
 
-        // Плотность и колыхание тумана
-        float hazeDensity = 0.72 + 0.28 * mistFlow;
-        float alpha = clamp(innerClear * hazeDensity, 0.0, 0.98);
-
-        // Теплый отблеск на клубах тумана, касающихся освященного света (дымка в лучах)
-        float edgeGlowFactor = smoothstep(1.5, uLanternRadius * 0.9, dist) * (1.0 - smoothstep(uLanternRadius * 0.9, uLanternRadius * 1.5, dist));
+        // Цвета:
+        // Внешний туман — кромешная ночная мгла
         vec3 darkFogColor = vec3(0.024, 0.016, 0.032);
-        vec3 holyLightColor = vec3(0.98, 0.72, 0.32);
+        // Золотистый отсвет фонаря на клубящейся дымке
+        vec3 holyGlowColor = vec3(0.96, 0.74, 0.38);
 
-        vec3 color = mix(darkFogColor, holyLightColor, edgeGlowFactor * 0.38 * (0.6 + 0.4 * n1));
+        // Подсветка дымки на границе света (дымка светится в лучах)
+        float rimFactor = smoothstep(clearRadius - 0.8, clearRadius + 1.2, dist) * (1.0 - smoothstep(clearRadius + 1.2, clearRadius + 4.5, dist));
+        vec3 finalColor = mix(darkFogColor, holyGlowColor, rimFactor * 0.45 * (0.6 + 0.4 * n1));
 
-        gl_FragColor = vec4(color, alpha);
+        float alpha = clamp(fogDensity * 0.98, 0.0, 0.98);
+
+        gl_FragColor = vec4(finalColor, alpha);
       }
     `;
 
     this.groundMistUniforms = {
       uPlayerPos: { value: new THREE.Vector3(0, 0, 4) },
       uTime: { value: 0 },
-      uLanternRadius: { value: 6.2 }
+      uLanternRadius: { value: 6.8 }
     };
 
     const mistGeo = new THREE.PlaneGeometry(this.fieldSize, this.fieldSize, 64, 64);
@@ -120,26 +125,27 @@ export class FogMistManager {
 
     this.groundMistMesh = new THREE.Mesh(mistGeo, mistMat);
     this.groundMistMesh.rotation.x = -Math.PI / 2;
-    this.groundMistMesh.position.y = 0.07; // чуть выше плитки поля
+    this.groundMistMesh.position.y = 0.06;
     this.groundMistMesh.renderOrder = 3;
     this.group.add(this.groundMistMesh);
   }
 
   /**
-   * Парящие клубы дымки (плавающие объемные частицы тумана).
-   * Дрейфуют над полем, плавно покачиваясь и озаряясь золотом в лучах фонаря.
+   * Парящие в воздухе клубы мягкой дымки.
+   * Использование аддитивного смешивания гарантирует, что частицы НИКОГДА
+   * не затемняют игрока или землю черными кругами, а лишь добавляют мягкое свечение.
    */
   createFloatingMistWisps() {
-    // Генерация текстуры мягкого облачка дымки на canvas
+    // Генерация гладкой текстуры дымки
     const cv = document.createElement('canvas');
     cv.width = 128;
     cv.height = 128;
     const ctx = cv.getContext('2d');
 
-    const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
-    grad.addColorStop(0.35, 'rgba(230, 220, 240, 0.45)');
-    grad.addColorStop(0.7, 'rgba(180, 160, 200, 0.15)');
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255, 235, 190, 0.8)');
+    grad.addColorStop(0.3, 'rgba(230, 200, 150, 0.4)');
+    grad.addColorStop(0.65, 'rgba(180, 150, 120, 0.12)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 128, 128);
@@ -147,17 +153,17 @@ export class FogMistManager {
     const mistTexture = new THREE.CanvasTexture(cv);
 
     this.wisps = [];
-    const count = 48;
-    const spawnRange = this.fieldSize * 0.45;
+    const count = 38;
+    const spawnRange = this.fieldSize * 0.44;
 
     for (let i = 0; i < count; i++) {
-      const size = 3.5 + Math.random() * 3.5;
+      const size = 3.0 + Math.random() * 3.5;
       const mat = new THREE.SpriteMaterial({
         map: mistTexture,
-        color: 0x1b1424,
+        color: 0xffd185,
         transparent: true,
-        opacity: 0.18 + Math.random() * 0.22,
-        blending: THREE.NormalBlending,
+        opacity: 0.08 + Math.random() * 0.12,
+        blending: THREE.AdditiveBlending, // Аддитивное смешивание — никакого затемнения!
         depthWrite: false
       });
 
@@ -166,7 +172,7 @@ export class FogMistManager {
 
       const x = (Math.random() - 0.5) * spawnRange * 2;
       const z = (Math.random() - 0.5) * spawnRange * 2;
-      const y = 0.35 + Math.random() * 1.4;
+      const y = 0.4 + Math.random() * 1.2;
       sprite.position.set(x, y, z);
       sprite.renderOrder = 4;
 
@@ -178,10 +184,10 @@ export class FogMistManager {
         baseX: x,
         baseZ: z,
         baseY: y,
-        speedX: 0.15 + Math.random() * 0.35,
-        speedZ: 0.1 + Math.random() * 0.25,
+        speedX: 0.12 + Math.random() * 0.28,
+        speedZ: 0.08 + Math.random() * 0.2,
         phase: Math.random() * Math.PI * 2,
-        baseOpacity: mat.opacity,
+        maxOpacity: 0.14 + Math.random() * 0.12,
         size
       });
     }
@@ -190,7 +196,7 @@ export class FogMistManager {
   update(playerPos, dt, now) {
     const time = now * 0.001;
 
-    // Обновление униформов шейдера земли
+    // Обновление униформов шейдера тумана
     this.groundMistUniforms.uTime.value = time;
     this.groundMistUniforms.uPlayerPos.value.copy(playerPos);
 
@@ -202,9 +208,9 @@ export class FogMistManager {
       // Дрейф по ветру
       w.sprite.position.x += w.speedX * dt;
       w.sprite.position.z += w.speedZ * dt;
-      w.sprite.position.y = w.baseY + Math.sin(time * 1.2 + w.phase) * 0.22;
+      w.sprite.position.y = w.baseY + Math.sin(time * 1.1 + w.phase) * 0.18;
 
-      // Циклический перенос при выходе за границы
+      // Циклический перенос
       if (w.sprite.position.x > half) w.sprite.position.x = -half;
       if (w.sprite.position.z > half) w.sprite.position.z = -half;
 
@@ -213,21 +219,20 @@ export class FogMistManager {
       const dz = w.sprite.position.z - playerPos.z;
       const dist = Math.hypot(dx, dz);
 
-      // В лучах фонаря клубы дымки озаряются теплым золотистым светом
-      if (dist < 8.0) {
-        const lightIntensity = Math.max(0, 1.0 - dist / 8.0);
-        // Интерполяция цвета от темной мглы к теплой золотистой дымке
-        w.mat.color.setRGB(
-          THREE.MathUtils.lerp(0.12, 0.95, lightIntensity * 0.65),
-          THREE.MathUtils.lerp(0.09, 0.72, lightIntensity * 0.65),
-          THREE.MathUtils.lerp(0.16, 0.35, lightIntensity * 0.65)
-        );
-        w.mat.opacity = w.baseOpacity * (1.0 + lightIntensity * 0.8);
+      // Частицы плавно светятся золотистой дымкой в лучах фонаря (от 2.5 до 8 метров)
+      if (dist < 8.5) {
+        // Плавное угасание прямо перед глазами, чтобы не мешать обзору Агаты
+        const viewClear = smoothstep(0.8, 2.5, dist);
+        const lightIntensity = Math.max(0, 1.0 - dist / 8.5) * viewClear;
+        w.mat.opacity = w.maxOpacity * lightIntensity;
       } else {
-        // Вдалеке от света — глубокая темная мгла
-        w.mat.color.setRGB(0.08, 0.05, 0.11);
-        w.mat.opacity = w.baseOpacity;
+        w.mat.opacity = 0;
       }
     }
   }
+}
+
+function smoothstep(min, max, value) {
+  const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  return x * x * (3 - 2 * x);
 }

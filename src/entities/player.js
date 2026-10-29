@@ -65,7 +65,8 @@ export class Player {
       new THREE.BoxGeometry(0.2, 0.28, 0.2),
       new THREE.MeshStandardMaterial({ color: 0x3d3127, metalness: 0.6, roughness: 0.3 })
     );
-    lanternMesh.castShadow = true;
+    // Фонарь не должен отбрасывать тень сам на себя и на землю под собой
+    lanternMesh.castShadow = false;
     this.lanternGroup.add(lanternMesh);
 
     // Ярко светящееся ядро фонаря
@@ -82,9 +83,9 @@ export class Player {
     haloCanvas.height = 64;
     const hctx = haloCanvas.getContext('2d');
     const hgrad = hctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-    hgrad.addColorStop(0, 'rgba(255, 230, 160, 0.95)');
-    hgrad.addColorStop(0.3, 'rgba(255, 180, 70, 0.45)');
-    hgrad.addColorStop(0.7, 'rgba(255, 120, 30, 0.12)');
+    hgrad.addColorStop(0, 'rgba(255, 235, 170, 0.95)');
+    hgrad.addColorStop(0.35, 'rgba(255, 185, 75, 0.5)');
+    hgrad.addColorStop(0.7, 'rgba(255, 125, 35, 0.15)');
     hgrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     hctx.fillStyle = hgrad;
     hctx.fillRect(0, 0, 64, 64);
@@ -96,20 +97,26 @@ export class Player {
       transparent: true,
       depthWrite: false
     }));
-    haloSprite.scale.set(0.9, 0.9, 1);
+    haloSprite.scale.set(1.0, 1.0, 1);
     this.lanternGroup.add(haloSprite);
 
-    // Основной яркий точечный свет фонаря (пробивает мглу)
-    this.lanternLight = new THREE.PointLight(0xffdf88, 8.5, 7.5, 1.35);
-    this.lanternLight.position.set(0, 0, 0);
-    this.lanternLight.castShadow = true;
-    this.lanternLight.shadow.bias = -0.002;
+    // Основной яркий точечный свет фонаря (без самозатенения, освещает всё вокруг)
+    this.lanternLight = new THREE.PointLight(0xffdf88, 7.5, 9.5, 1.1);
+    this.lanternLight.position.set(0.05, 0, 0.08);
+    this.lanternLight.castShadow = false;
     this.lanternGroup.add(this.lanternLight);
 
-    // Вторичный теплый заполняющий ореол света
-    this.auraLight = new THREE.PointLight(0xff9933, 3.8, 11.0, 1.8);
+    // Вторичный теплый купол янтарного света
+    this.auraLight = new THREE.PointLight(0xff9933, 4.0, 12.5, 1.5);
     this.auraLight.position.set(0, 0, 0);
+    this.auraLight.castShadow = false;
     this.lanternGroup.add(this.auraLight);
+
+    // Подсветка непосредственно под ногами героини (исключает любые темные провалы у ног)
+    this.feetLight = new THREE.PointLight(0xffbe66, 3.5, 5.0, 1.3);
+    this.feetLight.position.set(0, 0.35, 0);
+    this.feetLight.castShadow = false;
+    this.group.add(this.feetLight);
 
     this.group.add(this.lanternGroup);
   }
@@ -153,8 +160,9 @@ export class Player {
 
     // Живое мерцание пламени фонаря
     const flicker = Math.sin(now * 0.007) * 0.45 + Math.cos(now * 0.013) * 0.22;
-    this.lanternLight.intensity = 8.5 + flicker;
-    this.auraLight.intensity = 3.8 + flicker * 0.4;
+    this.lanternLight.intensity = 7.5 + flicker;
+    this.auraLight.intensity = 4.0 + flicker * 0.4;
+    this.feetLight.intensity = 3.5 + flicker * 0.3;
   }
 
   getPosition() {
