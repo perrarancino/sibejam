@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a141f">
+  <title>Сестра Агата: Освященный Дозор (Sibejam 2.5D)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      background: #141019;
+      color: #e5dcd0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    #game-canvas-container {
+      position: fixed;
+      inset: 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* Верхний HUD */
+    .hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 20px 24px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .hud-card {
+      background: rgba(30, 23, 36, 0.82);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(138, 115, 150, 0.28);
+      border-radius: 12px;
+      padding: 12px 18px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      pointer-events: auto;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: #793a96;
+      color: #fff;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: #f7eee2;
+    }
+    .stats-row {
+      display: flex;
+      gap: 18px;
+      margin-top: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat-label {
+      color: #a494a8;
+      font-size: 12px;
+    }
+    .stat-value {
+      font-weight: 700;
+      color: #ffde8a;
+    }
+    .hp-bar-outer {
+      width: 110px;
+      height: 8px;
+      background: #2b1f2b;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid #573e57;
+    }
+    .hp-bar-inner {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #d33c4f, #ff6565);
+      transition: width 0.2s ease;
+    }
+
+    /* Правая панель кнопок */
+    .hud-actions {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+    .hud-btn {
+      background: rgba(45, 35, 52, 0.85);
+      border: 1px solid #63506e;
+      border-radius: 8px;
+      color: #e6ddce;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hud-btn:hover {
+      background: #473854;
+      border-color: #9275a2;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .hud-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Подсказка по управлению слева снизу */
+    .legend {
+      position: fixed;
+      bottom: 22px;
+      left: 24px;
+      background: rgba(26, 20, 31, 0.85);
+      border: 1px solid rgba(138, 115, 150, 0.25);
+      backdrop-filter: blur(8px);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #b7a9bf;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .legend-title {
+      font-weight: 700;
+      color: #f3ebdf;
+      margin-bottom: 4px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .key-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #392b42;
+      border: 1px solid #5a4666;
+      color: #ffea9f;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+      margin: 0 2px;
+    }
+
+    /* Индикатор текущего состояния (Ходьба / Бег) */
+    .speed-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .speed-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #51c476;
+      box-shadow: 0 0 8px #51c476;
+    }
+    .speed-dot.running {
+      background: #ffab40;
+      box-shadow: 0 0 10px #ffab40;
+    }
+
+    /* Модальное окно с разметкой GDD */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 7, 14, 0.7);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+    }
+    .modal-backdrop.show {
+      display: flex;
+    }
+    .modal-panel {
+      background: #201827;
+      border: 1px solid #63506e;
+      border-radius: 14px;
+      max-width: 760px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
+      color: #e0d5e5;
+    }
+    .modal-header {
+      padding: 18px 22px;
+      border-bottom: 1px solid #3d2f47;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #ffde8a;
+    }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: #b7a9bf;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+    .modal-body {
+      padding: 20px 24px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .gdd-section {
+      background: #281e31;
+      border: 1px solid #433350;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .gdd-section h4 {
+      margin: 0 0 8px 0;
+      color: #f7eee2;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .gdd-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .gdd-item {
+      background: rgba(18, 13, 23, 0.4);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border-left: 3px solid #793a96;
+    }
+    .gdd-key {
+      color: #a494a8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .gdd-val {
+      font-weight: 700;
+      color: #f0e6d6;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 680px) {
+      .hud {
+        padding: 12px;
+      }
+      .hud-card {
+        padding: 8px 12px;
+      }
+      .legend {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Three.js Canvas -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Верхний HUD -->
+  <div class="hud">
+    <div class="hud-card">
+      <div class="title-row">
+        <span class="badge">ЭТАП 1</span>
+        <span class="title">Сестра Агата</span>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-label">ЗДОРОВЬЕ</span>
+          <div class="hp-bar-outer" title="100 / 100 HP">
+            <div class="hp-bar-inner" id="hp-bar" style="width: 100%;"></div>
+          </div>
+          <span class="stat-value" id="hp-text">100 HP</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">СЕМЕНА</span>
+          <span class="stat-value" id="seeds-text">🌰 100</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">КАМЕРЫ</span>
+          <span class="stat-value" id="cams-text">📷 2 free</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-actions">
+      <button class="hud-btn" id="btn-zoom-out" title="Отдалить камеру">−</button>
+      <button class="hud-btn" id="btn-zoom-in" title="Приблизить камеру">+</button>
+      <button class="hud-btn" id="btn-gdd-data" title="Посмотреть полную разметку GDD">📋 Разметка GDD</button>
+    </div>
+  </div>
+
+  <!-- Подсказка по управлению -->
+  <div class="legend">
+    <div class="legend-title">Управление Сестрой Агатой</div>
+    <div>Перемещение: <span class="key-badge">W</span> <span class="key-badge">A</span> <span class="key-badge">S</span> <span class="key-badge">D</span> или <span class="key-badge">Стрелки</span> (ЦФЫВ)</div>
+    <div>Бег (ускорение): удерживайте <span class="key-badge">Shift</span></div>
+    <div>Масштаб: <span class="key-badge">Колесико мыши</span> или кнопки сверху</div>
+    <div class="speed-indicator">
+      <div class="speed-dot" id="speed-dot"></div>
+      <span id="speed-text" style="color: #c7dcd0;">Ходьба (5.5 м/с)</span>
+    </div>
+  </div>
+
+  <!-- Модальное окно с разметкой GDD -->
+  <div class="modal-backdrop" id="gdd-modal">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div class="modal-title">Разметка данных геймдизайна (Ready for Next Phases)</div>
+        <button class="modal-close" id="btn-modal-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body" id="modal-gdd-content">
+        <!-- Генерируется из GAME_DESIGN -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js и логика игры -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+
+    /* =========================================================================
+       1. РАЗМЕТКА ДАННЫХ ГЕЙМДИЗАЙНА (GAME_DESIGN & INITIAL GAME_STATE)
+       Все механики, описанные в ТЗ, структурированы и готовы к расширению.
+       ========================================================================= */
+    export const GAME_DESIGN = {
+      heroine: {
+        name: 'Сестра Агата',
+        maxHp: 100,
+        walkSpeed: 5.5,
+        runSpeed: 9.5,
+        lanternRadius: 4.5,
+        wipeCameraDuration: 1.5, // секунд на протирание объектива
+        description: 'Маневренная защитница святыни с освященным фонарем.'
+      },
+      economy: {
+        startingSeeds: 100,
+        freeCameras: 2,
+        cameraCost: 40,
+        holySpikesCost: 25,
+        holyTarCost: 15
+      },
+      fogOfWar: {
+        preWaveClear: true,
+        encroachSpeed: 1.2,
+        blindsPlayer: true,
+        witherSacredPumpkins: true,
+        witherRatePerSec: 2.0,
+        enemiesHiddenInFog: true
+      },
+      surveillanceCamera: {
+        fovDegrees: 90,
+        rangeMeters: 10.0,
+        mountsOn: ['tombstones', 'fence', 'crypt_walls'],
+        holyFlash: {
+          cooldownSec: 15.0,
+          stunDurationSec: 3.0,
+          fogPushbackDistance: 2.5
+        },
+        failureState: {
+          smearedByKamikaze: true,
+          shutsDownSectorTraps: true,
+          requiresManualWipeKeyE: true
+        }
+      },
+      traps: {
+        holySpikes: {
+          cost: 25,
+          damage: 30,
+          intervalSec: 1.5,
+          requiresIllumination: true // камера или фонарь Агаты
+        },
+        holyTar: {
+          cost: 15,
+          slowdownPercent: 50,
+          duration: 'permanent'
+        }
+      },
+      bestiary: {
+        katun: {
+          name: 'Мини-тыковка (Катун)',
+          hp: 15,
+          behavior: 'Катится толпами по кратчайшему пути к клумбе реликвий.',
+          fogSpeedMultiplier: 1.5,
+          lightReaction: 'Пугается и замедляется'
+        },
+        kamikaze: {
+          name: 'Гнилой прыгун (Камикадзе)',
+          hp: 25,
+          behavior: 'Прыгает зигзагами через шипы. Цель — камеры.',
+          onCameraContact: 'Взрывается, заливает объектив жижей и погружает сектор в туман.'
+        },
+        swollen: {
+          name: 'Набухшая тыква (Взрывная)',
+          hp: 50,
+          behavior: 'Катится по прямой, 2 раза отталкивается от препятствий, на 3-е столкновение взрывается.',
+          explosionEffect: 'Уничтожает все ловушки и камеры в радиусе поражения.'
+        }
+      },
+      specialMechanics: {
+        motionDetector: {
+          enabled: true,
+          triggerOnBehindApproachInCameraMode: true,
+          description: 'Звуковой детектор вибрации при приближении врага сзади во время просмотра камер.'
+        },
+        seedMagnet: {
+          enabled: true,
+          triggerBetweenWaves: true,
+          description: 'Между волнами оставшиеся семена автоматически притягиваются к Агате.'
+        },
+        soundscape: {
+          fogMufflesAgataSteps: true,
+          fogAmplifiesEnemyCreaks: true
+        }
+      }
+    };
+
+    // Текущее состояние игры
+    export const GAME_STATE = {
+      hp: GAME_DESIGN.heroine.maxHp,
+      seeds: GAME_DESIGN.economy.startingSeeds,
+      freeCameras: GAME_DESIGN.economy.freeCameras,
+      placedCameras: [],
+      placedTraps: [],
+      wave: 0,
+      phase: 'PREPARATION', // 'PREPARATION' | 'WAVE_ACTIVE' | 'WAVE_CLEAR'
+      isViewingCamera: false,
+      activeCameraIndex: 0,
+      isRunning: false
+    };
+
+    // Экспорт в window для удобной отладки в консоли
+    window.GAME_DESIGN = GAME_DESIGN;
+    window.GAME_STATE = GAME_STATE;
+
+    /* =========================================================================
+       2. НАСТРОЙКА СЦЕНЫ, 2.5D ИЗОМЕТРИЧЕСКОЙ КАМЕРЫ И СВЕТА
+       Используется механика изометрии из исходного index.html:
+       OrthographicCamera(left, right, top, bottom, near, far)
+       позиция (45, 60, 45) глядящая в центр (0, 0, 0).
+       ========================================================================= */
+    const container = document.querySelector('#game-canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x130e18);
+    scene.fog = new THREE.FogExp2(0x130e18, 0.015);
+
+    // Ортографическая изометрическая камера
+    const camera = new THREE.OrthographicCamera(-22, 22, 22, -22, 0.1, 200);
+    const cameraOffset = new THREE.Vector3(45, 60, 45);
+    const cameraTarget = new THREE.Vector3(0, 0, 0);
+    const desiredTarget = new THREE.Vector3(0, 0, 0);
+
+    camera.position.copy(cameraOffset);
+    camera.lookAt(cameraTarget);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    // Ночное освещение (холодный лунный свет + теплый заполняющий)
+    const ambientLight = new THREE.AmbientLight(0x352840, 1.2);
+    scene.add(ambientLight);
+
+    const moonLight = new THREE.DirectionalLight(0x9bc2e6, 1.6);
+    moonLight.position.set(30, 50, 20);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.width = 2048;
+    moonLight.shadow.mapSize.height = 2048;
+    moonLight.shadow.camera.near = 10;
+    moonLight.shadow.camera.far = 120;
+    const shadowD = 25;
+    moonLight.shadow.camera.left = -shadowD;
+    moonLight.shadow.camera.right = shadowD;
+    moonLight.shadow.camera.top = shadowD;
+    moonLight.shadow.camera.bottom = -shadowD;
+    moonLight.shadow.bias = -0.0005;
+    scene.add(moonLight);
+
+    /* =========================================================================
+       3. ПУСТАЯ КАРТА (КЛАДБИЩЕНСКОЕ ПОЛЕ С РАЗМЕТКОЙ)
+       Небольшое поле размером 26x26 метров с границами и плиточной текстурой.
+       ========================================================================= */
+    const FIELD_SIZE = 26;
+    const HALF_FIELD = FIELD_SIZE / 2;
+
+    // Генерация процедурной текстуры земли кладбища (земля, стыки каменных плит)
+    function createGroundTexture() {
+      const cv = document.createElement('canvas');
+      cv.width = 512;
+      cv.height = 512;
+      const ctx = cv.getContext('2d');
+
+      // Основной тон кладбищенской земли
+      ctx.fillStyle = '#201925';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Сетка каменных плит (для тактической разметки будущих ловушек и камер)
+      const tileSize = 64;
+      ctx.strokeStyle = '#2d2235';
+      ctx.lineWidth = 2;
+      for (let x = 0; x <= 512; x += tileSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 512);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= 512; y += tileSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(512, y);
+        ctx.stroke();
+      }
+
+      // Тонкие шумы и гравий
+      for (let i = 0; i < 2400; i++) {
+        const px = Math.random() * 512;
+        const py = Math.random() * 512;
+        const r = Math.random() * 1.5;
+        ctx.fillStyle = Math.random() > 0.5 ? '#17111b' : '#392c43';
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(FIELD_SIZE / 4, FIELD_SIZE / 4);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    const groundGeo = new THREE.BoxGeometry(FIELD_SIZE, 0.6, FIELD_SIZE);
+    const groundMat = new THREE.MeshStandardMaterial({
+      map: createGroundTexture(),
+      roughness: 0.88,
+      metalness: 0.1
+    });
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.position.y = -0.3;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // Бордюр / ограда по периметру поля (демаркация границ локации)
+    const borderGroup = new THREE.Group();
+    const borderMat = new THREE.MeshStandardMaterial({ color: 0x3e3247, roughness: 0.7 });
+    const cornerMat = new THREE.MeshStandardMaterial({ color: 0x5e4b6c, roughness: 0.6 });
+
+    const wallThickness = 0.35;
+    const wallHeight = 0.5;
+
+    function createWall(w, h, d, x, y, z) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), borderMat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      borderGroup.add(mesh);
+    }
+    // 4 стены
+    createWall(FIELD_SIZE, wallHeight, wallThickness, 0, wallHeight / 2, -HALF_FIELD);
+    createWall(FIELD_SIZE, wallHeight, wallThickness, 0, wallHeight / 2, HALF_FIELD);
+    createWall(wallThickness, wallHeight, FIELD_SIZE, -HALF_FIELD, wallHeight / 2, 0);
+    createWall(wallThickness, wallHeight, FIELD_SIZE, HALF_FIELD, wallHeight / 2, 0);
+
+    // Угловые могильные столбики
+    [[-HALF_FIELD, -HALF_FIELD], [HALF_FIELD, -HALF_FIELD], [-HALF_FIELD, HALF_FIELD], [HALF_FIELD, HALF_FIELD]].forEach(([cx, cz]) => {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.7), cornerMat);
+      pillar.position.set(cx, 0.6, cz);
+      pillar.castShadow = true;
+      pillar.receiveShadow = true;
+      borderGroup.add(pillar);
+    });
+    scene.add(borderGroup);
+
+    // Центр поля: разметка будущей клумбы Священных Тыкв (Relic Patch)
+    const relicCenterGeo = new THREE.CylinderGeometry(2.0, 2.2, 0.08, 24);
+    const relicCenterMat = new THREE.MeshStandardMaterial({
+      color: 0x3d2719,
+      roughness: 0.9
+    });
+    const relicPatch = new THREE.Mesh(relicCenterGeo, relicCenterMat);
+    relicPatch.position.set(0, 0.04, 0);
+    relicPatch.receiveShadow = true;
+    scene.add(relicPatch);
+
+    // Декоративный символ святыни на земле (легкое свечение)
+    const ringGeo = new THREE.RingGeometry(1.6, 1.8, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xd9822b,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.35
+    });
+    const relicRing = new THREE.Mesh(ringGeo, ringMat);
+    relicRing.rotation.x = -Math.PI / 2;
+    relicRing.position.set(0, 0.09, 0);
+    scene.add(relicRing);
+
+    /* =========================================================================
+       4. ПЕРСОНАЖ: СЕСТРА АГАТА («КВАДРАТИК» С ФОНАРЕМ)
+       Стилизованный 2.5D кубик с монашеским одеянием, направлением взгляда
+       и освященным персональным фонарем.
+       ========================================================================= */
+    const agataGroup = new THREE.Group();
+    scene.add(agataGroup);
+
+    // Тело Сестры Агаты (темно-фиолетовый / графитовый стилизованный куб)
+    const cubeSize = 0.85;
+    const agataMat = new THREE.MeshStandardMaterial({
+      color: 0x2e2438,
+      roughness: 0.5,
+      metalness: 0.15
+    });
+    const agataCube = new THREE.Mesh(new THREE.BoxGeometry(cubeSize, cubeSize * 1.1, cubeSize), agataMat);
+    agataCube.position.y = (cubeSize * 1.1) / 2;
+    agataCube.castShadow = true;
+    agataCube.receiveShadow = true;
+    agataGroup.add(agataCube);
+
+    // Белый воротничок/накидка (характерный атрибут сестры)
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0xded8e6, roughness: 0.4 });
+    const collarMesh = new THREE.Mesh(new THREE.BoxGeometry(cubeSize * 1.02, 0.18, cubeSize * 1.02), collarMat);
+    collarMesh.position.y = cubeSize * 0.95;
+    collarMesh.castShadow = true;
+    agataGroup.add(collarMesh);
+
+    // Указатель направления взгляда (крест / золотистый визор на лицевой стороне)
+    const visorMat = new THREE.MeshStandardMaterial({
+      color: 0xffd152,
+      emissive: 0xffa01a,
+      emissiveIntensity: 0.5,
+      roughness: 0.3
+    });
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.08), visorMat);
+    visor.position.set(0, cubeSize * 0.72, cubeSize / 2 + 0.04);
+    agataGroup.add(visor);
+
+    // Освященный фонарь Сестры Агаты
+    const lanternGroup = new THREE.Group();
+    lanternGroup.position.set(cubeSize / 2 + 0.2, cubeSize * 0.55, cubeSize / 4);
+
+    const lanternMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.28, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0x3d3127, metalness: 0.6, roughness: 0.3 })
+    );
+    lanternMesh.castShadow = true;
+    lanternGroup.add(lanternMesh);
+
+    // Светящееся ядро фонаря
+    const bulbMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffe28a })
+    );
+    bulbMesh.position.y = -0.02;
+    lanternGroup.add(bulbMesh);
+
+    // Источник точечного света от фонаря (освященный радиус 4.5м по GDD)
+    const lanternLight = new THREE.PointLight(0xffbe5c, 2.4, GAME_DESIGN.heroine.lanternRadius, 1.8);
+    lanternLight.position.set(0, 0, 0);
+    lanternLight.castShadow = true;
+    lanternLight.shadow.bias = -0.002;
+    lanternGroup.add(lanternLight);
+
+    agataGroup.add(lanternGroup);
+
+    // Начальная позиция героини (чуть южнее центра)
+    agataGroup.position.set(0, 0, 4);
+
+    /* =========================================================================
+       5. СИСТЕМА УПРАВЛЕНИЯ И ВВОДА
+       Поддержка: WASD, стрелки, русская раскладка ЦФЫВ, зажатие Shift для бега.
+       Изометрическая проекция:
+       Клавиша W (вверх на экране) = вектор (-1, 0, -1).
+       Клавиша S (вниз на экране) = вектор (1, 0, 1).
+       Клавиша A (влево на экране) = вектор (-1, 0, 1).
+       Клавиша D (вправо на экране) = вектор (1, 0, -1).
+       ========================================================================= */
+    const keys = new Set();
+    let isShiftPressed = false;
+
+    const keymap = {
+      // Английская раскладка
+      'w': 'up',
+      's': 'down',
+      'a': 'left',
+      'd': 'right',
+      // Русская раскладка
+      'ц': 'up',
+      'ы': 'down',
+      'ф': 'left',
+      'в': 'right',
+      // Стрелки
+      'arrowup': 'up',
+      'arrowdown': 'down',
+      'arrowleft': 'left',
+      'arrowright': 'right'
+    };
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') {
+        isShiftPressed = true;
+      }
+      const k = keymap[e.key.toLowerCase()];
+      if (k) {
+        keys.add(k);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') {
+        isShiftPressed = false;
+      }
+      const k = keymap[e.key.toLowerCase()];
+      if (k) {
+        keys.delete(k);
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      keys.clear();
+      isShiftPressed = false;
+    });
+
+    // Зум камеры (ортографическая проекция)
+    let zoomLevel = 1.0;
+    function setZoom(val) {
+      zoomLevel = THREE.MathUtils.clamp(val, 0.65, 2.2);
+      camera.zoom = zoomLevel;
+      camera.updateProjectionMatrix();
+    }
+    document.querySelector('#btn-zoom-in').addEventListener('click', () => setZoom(zoomLevel * 1.15));
+    document.querySelector('#btn-zoom-out').addEventListener('click', () => setZoom(zoomLevel / 1.15));
+    window.addEventListener('wheel', (e) => {
+      setZoom(zoomLevel * Math.exp(-e.deltaY * 0.0012));
+    }, { passive: true });
+
+    // Адаптивное изменение размеров окна
+    function handleResize() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const frustumSize = 34;
+      camera.left = -frustumSize * Math.max(aspect, 1) / 2;
+      camera.right = frustumSize * Math.max(aspect, 1) / 2;
+      camera.top = frustumSize * Math.max(1, 1 / aspect) / 2;
+      camera.bottom = -frustumSize * Math.max(1, 1 / aspect) / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    /* =========================================================================
+       6. UI: МОДАЛЬНОЕ ОКНО РАЗМЕТКИ GDD
+       ========================================================================= */
+    const modal = document.querySelector('#gdd-modal');
+    const modalContent = document.querySelector('#modal-gdd-content');
+
+    function renderGddInfo() {
+      modalContent.innerHTML = `
+        <div class="gdd-section">
+          <h4>👤 Главная героиня: ${GAME_DESIGN.heroine.name}</h4>
+          <div class="gdd-grid">
+            <div class="gdd-item"><div class="gdd-key">Здоровье</div><div class="gdd-val">${GAME_DESIGN.heroine.maxHp} HP (восстановление между волнами)</div></div>
+            <div class="gdd-item"><div class="gdd-key">Скорость ходьбы</div><div class="gdd-val">${GAME_DESIGN.heroine.walkSpeed} м/с</div></div>
+            <div class="gdd-item"><div class="gdd-key">Скорость бега (Shift)</div><div class="gdd-val">${GAME_DESIGN.heroine.runSpeed} м/с</div></div>
+            <div class="gdd-item"><div class="gdd-key">Радиус фонаря</div><div class="gdd-val">${GAME_DESIGN.heroine.lanternRadius} м (активирует ловушки)</div></div>
+            <div class="gdd-item"><div class="gdd-key">Протирка камеры (E)</div><div class="gdd-val">${GAME_DESIGN.heroine.wipeCameraDuration} сек</div></div>
+          </div>
+        </div>
+
+        <div class="gdd-section">
+          <h4>🌰 Строительство и Экономика</h4>
+          <div class="gdd-grid">
+            <div class="gdd-item"><div class="gdd-key">Стартовый баланс</div><div class="gdd-val">${GAME_DESIGN.economy.startingSeeds} семян, ${GAME_DESIGN.economy.freeCameras} бесплатные камеры</div></div>
+            <div class="gdd-item"><div class="gdd-key">Камера наблюдения</div><div class="gdd-val">${GAME_DESIGN.economy.cameraCost} семян (угол 90°, дальность 10м)</div></div>
+            <div class="gdd-item"><div class="gdd-key">Освященные шипы</div><div class="gdd-val">${GAME_DESIGN.economy.holySpikesCost} семян (30 урона / 1.5 сек на свету)</div></div>
+            <div class="gdd-item"><div class="gdd-key">Святая смола</div><div class="gdd-val">${GAME_DESIGN.economy.holyTarCost} семян (замедление 50%)</div></div>
+          </div>
+        </div>
+
+        <div class="gdd-section">
+          <h4>📷 Камеры Наблюдения и Способности</h4>
+          <div class="gdd-grid">
+            <div class="gdd-item"><div class="gdd-key">Конус света</div><div class="gdd-val">90°, пробивает туман на ${GAME_DESIGN.surveillanceCamera.rangeMeters} метров</div></div>
+            <div class="gdd-item"><div class="gdd-key">Святая вспышка (Space)</div><div class="gdd-val">Стан 3 сек, отброс тумана, КД 15 сек</div></div>
+            <div class="gdd-item"><div class="gdd-key">Режим просмотра</div><div class="gdd-val">Tab + 1–4, риск: Агата неподвижна в мире</div></div>
+            <div class="gdd-item"><div class="gdd-key">Поломка</div><div class="gdd-val">Камикадзе заливает слизью -> сектор гаснет</div></div>
+          </div>
+        </div>
+
+        <div class="gdd-section">
+          <h4>🎃 Бестиарий (Враги из могильных дыр)</h4>
+          <div class="gdd-grid">
+            <div class="gdd-item"><div class="gdd-key">Катун (Мини-тыковка)</div><div class="gdd-val">${GAME_DESIGN.bestiary.katun.hp} HP, скорость в тумане x1.5, бежит к реликвиям</div></div>
+            <div class="gdd-item"><div class="gdd-key">Камикадзе (Прыгун)</div><div class="gdd-val">${GAME_DESIGN.bestiary.kamikaze.hp} HP, цель — камеры, взрывом ослепляет объектив</div></div>
+            <div class="gdd-item"><div class="gdd-key">Набухшая тыква</div><div class="gdd-val">${GAME_DESIGN.bestiary.swollen.hp} HP, 2 отскока, взрывает ловушки и камеры</div></div>
+          </div>
+        </div>
+
+        <div class="gdd-section">
+          <h4>⚙️ Дополнительные ключевые механики</h4>
+          <div class="gdd-grid">
+            <div class="gdd-item"><div class="gdd-key">Детектор движения</div><div class="gdd-val">Звук вибрации/писка при атаке сзади в режиме камер</div></div>
+            <div class="gdd-item"><div class="gdd-key">Сборщик семян</div><div class="gdd-val">Между волнами семена намагничиваются к Агате</div></div>
+            <div class="gdd-item"><div class="gdd-key">Туман войны</div><div class="gdd-val">До волны поле открыто; в волне наползает с краев</div></div>
+          </div>
+        </div>
+      `;
+    }
+
+    document.querySelector('#btn-gdd-data').addEventListener('click', () => {
+      renderGddInfo();
+      modal.classList.add('show');
+    });
+    document.querySelector('#btn-modal-close').addEventListener('click', () => {
+      modal.classList.remove('show');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('show');
+    });
+
+    /* =========================================================================
+       7. ИГРОВОЙ ЦИКЛ (GAME LOOP)
+       Плавное перемещение персонажа, бег, вращение и следование изо-камеры.
+       ========================================================================= */
+    const speedDot = document.querySelector('#speed-dot');
+    const speedText = document.querySelector('#speed-text');
+
+    let lastTime = performance.now();
+    let currentRotation = 0;
+    let targetRotation = 0;
+
+    // Ограничение перемещения по границам поля с учетом радиуса Агаты
+    const PLAYER_RADIUS = cubeSize / 2 + 0.1;
+    const BOUND_LIMIT = HALF_FIELD - wallThickness - PLAYER_RADIUS;
+
+    function animate(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+
+      // Определение ввода направления относительно экрана в изометрии
+      // W (Up на экране) -> вектор (-1, 0, -1)
+      // S (Down на экране) -> вектор (1, 0, 1)
+      // A (Left на экране) -> вектор (-1, 0, 1)
+      // D (Right на экране) -> вектор (1, 0, -1)
+      let screenX = (keys.has('right') ? 1 : 0) - (keys.has('left') ? 1 : 0);
+      let screenY = (keys.has('up') ? 1 : 0) - (keys.has('down') ? 1 : 0);
+
+      const isMoving = (screenX !== 0 || screenY !== 0);
+      const isRunning = isMoving && isShiftPressed;
+      GAME_STATE.isRunning = isRunning;
+
+      // Обновление индикатора скорости в UI
+      if (isRunning) {
+        speedDot.classList.add('running');
+        speedText.textContent = `Бег (${GAME_DESIGN.heroine.runSpeed} м/с)`;
+        speedText.style.color = '#ffab40';
+      } else {
+        speedDot.classList.remove('running');
+        speedText.textContent = isMoving ? `Ходьба (${GAME_DESIGN.heroine.walkSpeed} м/с)` : 'Покой (0 м/с)';
+        speedText.style.color = '#c7dcd0';
+      }
+
+      if (isMoving) {
+        // Нормализация вектора ввода на экране
+        const screenLen = Math.hypot(screenX, screenY);
+        const normScreenX = screenX / screenLen;
+        const normScreenY = screenY / screenLen;
+
+        // Преобразование screen (x, y) в 3D мировые координаты изометрии:
+        // World dx = (normScreenX - normScreenY) * 0.7071
+        // World dz = (-normScreenX - normScreenY) * 0.7071
+        const speed = isRunning ? GAME_DESIGN.heroine.runSpeed : GAME_DESIGN.heroine.walkSpeed;
+        const worldDx = (normScreenX - normScreenY) * 0.70710678 * speed * dt;
+        const worldDz = (-normScreenX - normScreenY) * 0.70710678 * speed * dt;
+
+        // Перемещение персонажа с проверкой границ поля
+        const nextX = THREE.MathUtils.clamp(agataGroup.position.x + worldDx, -BOUND_LIMIT, BOUND_LIMIT);
+        const nextZ = THREE.MathUtils.clamp(agataGroup.position.z + worldDz, -BOUND_LIMIT, BOUND_LIMIT);
+
+        agataGroup.position.x = nextX;
+        agataGroup.position.z = nextZ;
+
+        // Плавный поворот куба в сторону движения
+        targetRotation = Math.atan2(worldDx, worldDz);
+        // Интерполяция угла вращения
+        const diff = Math.atan2(Math.sin(targetRotation - currentRotation), Math.cos(targetRotation - currentRotation));
+        currentRotation += diff * Math.min(1.0, 14 * dt);
+        agataGroup.rotation.y = currentRotation;
+
+        // Легкое покачивание фонаря при ходьбе/беге
+        const bobbleFreq = isRunning ? 16 : 10;
+        const bobble = Math.sin(now * 0.001 * bobbleFreq) * (isRunning ? 0.06 : 0.03);
+        lanternGroup.position.y = (cubeSize * 0.55) + bobble;
+        agataCube.position.y = (cubeSize * 1.1) / 2 + Math.abs(bobble) * 0.5;
+      } else {
+        // Возврат фонаря в исходную позицию
+        lanternGroup.position.y = THREE.MathUtils.lerp(lanternGroup.position.y, cubeSize * 0.55, 10 * dt);
+        agataCube.position.y = THREE.MathUtils.lerp(agataCube.position.y, (cubeSize * 1.1) / 2, 10 * dt);
+      }
+
+      // Мерцание пламени фонаря (легкая живая пульсация)
+      lanternLight.intensity = 2.4 + Math.sin(now * 0.007) * 0.18 + Math.cos(now * 0.013) * 0.09;
+
+      // Плавное следование изометрической камеры за Агатой
+      desiredTarget.set(agataGroup.position.x, 0, agataGroup.position.z);
+      cameraTarget.lerp(desiredTarget, 1 - Math.exp(-4.5 * dt));
+
+      camera.position.copy(cameraOffset).add(cameraTarget);
+      camera.lookAt(cameraTarget);
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
