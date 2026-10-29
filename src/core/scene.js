@@ -8,7 +8,8 @@ export class SceneManager {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x060408);
-    this.scene.fog = new THREE.FogExp2(0x060408, 0.038);
+    // Внимание: scene.fog рассчитывается от позиции камеры в небе (87м),
+    // что окрашивало всю сцену в 100% черноту! Туманом управляет fogMist.js на земле.
 
     // Ортографическая изометрическая камера
     this.camera = new THREE.OrthographicCamera(-22, 22, 22, -22, 0.1, 200);
@@ -27,7 +28,7 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.1;
     this.container.appendChild(this.renderer.domElement);
 
     this.initLights();
@@ -36,12 +37,12 @@ export class SceneManager {
   }
 
   initLights() {
-    // Очень слабый ночной заполняющий свет (мгла склепа)
-    this.ambientLight = new THREE.AmbientLight(0x181424, 0.2);
+    // Мягкий ночной заполняющий свет (подчеркивает детали в тени)
+    this.ambientLight = new THREE.AmbientLight(0x282035, 0.45);
     this.scene.add(this.ambientLight);
 
-    // Тонкий холодный лунный свет (создает лишь легкие серебристые контуры)
-    this.moonLight = new THREE.DirectionalLight(0x768fa8, 0.35);
+    // Холодный лунный свет (отбрасывает мягкие тени от персонажа и стен)
+    this.moonLight = new THREE.DirectionalLight(0x8faec7, 0.6);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
     this.moonLight.shadow.mapSize.width = 2048;

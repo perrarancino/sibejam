@@ -21,7 +21,7 @@ class Game {
     this.sceneManager = new SceneManager(container);
     this.map = new GraveyardMap(this.sceneManager.scene);
     this.player = new Player(this.sceneManager.scene);
-    this.fogMist = new FogMistManager(this.sceneManager.scene, this.map.fieldSize + 10);
+    this.fogMist = new FogMistManager(this.sceneManager.scene, 56);
     this.hud = hud;
 
     // Кнопки зума (если присутствуют)
