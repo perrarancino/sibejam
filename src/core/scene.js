@@ -7,8 +7,8 @@ export class SceneManager {
   constructor(container) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x130e18);
-    this.scene.fog = new THREE.FogExp2(0x130e18, 0.015);
+    this.scene.background = new THREE.Color(0x060408);
+    this.scene.fog = new THREE.FogExp2(0x060408, 0.038);
 
     // Ортографическая изометрическая камера
     this.camera = new THREE.OrthographicCamera(-22, 22, 22, -22, 0.1, 200);
@@ -27,7 +27,7 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.05;
     this.container.appendChild(this.renderer.domElement);
 
     this.initLights();
@@ -36,12 +36,12 @@ export class SceneManager {
   }
 
   initLights() {
-    // Атмосферный заполняющий свет
-    this.ambientLight = new THREE.AmbientLight(0x352840, 1.2);
+    // Очень слабый ночной заполняющий свет (мгла склепа)
+    this.ambientLight = new THREE.AmbientLight(0x181424, 0.2);
     this.scene.add(this.ambientLight);
 
-    // Холодный лунный свет
-    this.moonLight = new THREE.DirectionalLight(0x9bc2e6, 1.6);
+    // Тонкий холодный лунный свет (создает лишь легкие серебристые контуры)
+    this.moonLight = new THREE.DirectionalLight(0x768fa8, 0.35);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
     this.moonLight.shadow.mapSize.width = 2048;

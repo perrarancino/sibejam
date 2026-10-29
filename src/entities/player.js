@@ -68,19 +68,48 @@ export class Player {
     lanternMesh.castShadow = true;
     this.lanternGroup.add(lanternMesh);
 
+    // Ярко светящееся ядро фонаря
     const bulbMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.08, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffe28a })
+      new THREE.SphereGeometry(0.09, 14, 14),
+      new THREE.MeshBasicMaterial({ color: 0xfff0aa })
     );
     bulbMesh.position.y = -0.02;
     this.lanternGroup.add(bulbMesh);
 
-    // Точечный свет фонаря (радиус 4.5м по GDD)
-    this.lanternLight = new THREE.PointLight(0xffbe5c, 2.4, HEROINE_CONFIG.lanternRadius, 1.8);
+    // Мягкий ореол свечения вокруг лампы (Sprite Halo)
+    const haloCanvas = document.createElement('canvas');
+    haloCanvas.width = 64;
+    haloCanvas.height = 64;
+    const hctx = haloCanvas.getContext('2d');
+    const hgrad = hctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+    hgrad.addColorStop(0, 'rgba(255, 230, 160, 0.95)');
+    hgrad.addColorStop(0.3, 'rgba(255, 180, 70, 0.45)');
+    hgrad.addColorStop(0.7, 'rgba(255, 120, 30, 0.12)');
+    hgrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    hctx.fillStyle = hgrad;
+    hctx.fillRect(0, 0, 64, 64);
+    const haloTex = new THREE.CanvasTexture(haloCanvas);
+
+    const haloSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: haloTex,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false
+    }));
+    haloSprite.scale.set(0.9, 0.9, 1);
+    this.lanternGroup.add(haloSprite);
+
+    // Основной яркий точечный свет фонаря (пробивает мглу)
+    this.lanternLight = new THREE.PointLight(0xffdf88, 8.5, 7.5, 1.35);
     this.lanternLight.position.set(0, 0, 0);
     this.lanternLight.castShadow = true;
     this.lanternLight.shadow.bias = -0.002;
     this.lanternGroup.add(this.lanternLight);
+
+    // Вторичный теплый заполняющий ореол света
+    this.auraLight = new THREE.PointLight(0xff9933, 3.8, 11.0, 1.8);
+    this.auraLight.position.set(0, 0, 0);
+    this.lanternGroup.add(this.auraLight);
 
     this.group.add(this.lanternGroup);
   }
@@ -123,7 +152,9 @@ export class Player {
     }
 
     // Живое мерцание пламени фонаря
-    this.lanternLight.intensity = 2.4 + Math.sin(now * 0.007) * 0.18 + Math.cos(now * 0.013) * 0.09;
+    const flicker = Math.sin(now * 0.007) * 0.45 + Math.cos(now * 0.013) * 0.22;
+    this.lanternLight.intensity = 8.5 + flicker;
+    this.auraLight.intensity = 3.8 + flicker * 0.4;
   }
 
   getPosition() {

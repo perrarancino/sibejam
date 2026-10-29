@@ -3,24 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a141f">
+  <meta name="theme-color" content="#060408">
   <title>Сестра Агата: Освященный Дозор (Sibejam 2.5D)</title>
   <style>
     * {
       box-sizing: border-box;
       user-select: none;
       -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
     }
     body {
-      margin: 0;
-      background: #141019;
-      color: #e5dcd0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #060408;
       overflow: hidden;
+      width: 100vw;
+      height: 100vh;
     }
     #game-canvas-container {
       position: fixed;
       inset: 0;
+      width: 100%;
+      height: 100%;
     }
     canvas {
       display: block;
@@ -28,373 +31,13 @@
       height: 100%;
       touch-action: none;
     }
-
-    /* Верхний HUD */
-    .hud {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 20px 24px;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .hud-card {
-      background: rgba(30, 23, 36, 0.82);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(138, 115, 150, 0.28);
-      border-radius: 12px;
-      padding: 12px 18px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-      pointer-events: auto;
-    }
-    .title-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .badge {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      background: #793a96;
-      color: #fff;
-    }
-    .title {
-      font-size: 16px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      color: #f7eee2;
-    }
-    .stats-row {
-      display: flex;
-      gap: 18px;
-      margin-top: 10px;
-      align-items: center;
-      font-size: 13px;
-    }
-    .stat-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .stat-label {
-      color: #a494a8;
-      font-size: 12px;
-    }
-    .stat-value {
-      font-weight: 700;
-      color: #ffde8a;
-    }
-    .hp-bar-outer {
-      width: 110px;
-      height: 8px;
-      background: #2b1f2b;
-      border-radius: 4px;
-      overflow: hidden;
-      border: 1px solid #573e57;
-    }
-    .hp-bar-inner {
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, #d33c4f, #ff6565);
-      transition: width 0.2s ease;
-    }
-
-    /* Правая панель кнопок */
-    .hud-actions {
-      display: flex;
-      gap: 8px;
-      pointer-events: auto;
-    }
-    .hud-btn {
-      background: rgba(45, 35, 52, 0.85);
-      border: 1px solid #63506e;
-      border-radius: 8px;
-      color: #e6ddce;
-      padding: 9px 14px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .hud-btn:hover {
-      background: #473854;
-      border-color: #9275a2;
-      color: #fff;
-      transform: translateY(-1px);
-    }
-    .hud-btn:active {
-      transform: translateY(0);
-    }
-
-    /* Подсказка по управлению слева снизу */
-    .legend {
-      position: fixed;
-      bottom: 22px;
-      left: 24px;
-      background: rgba(26, 20, 31, 0.85);
-      border: 1px solid rgba(138, 115, 150, 0.25);
-      backdrop-filter: blur(8px);
-      border-radius: 10px;
-      padding: 12px 16px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: #b7a9bf;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .legend-title {
-      font-weight: 700;
-      color: #f3ebdf;
-      margin-bottom: 4px;
-      font-size: 11px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .key-badge {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: #392b42;
-      border: 1px solid #5a4666;
-      color: #ffea9f;
-      font-size: 11px;
-      font-weight: 700;
-      font-family: monospace;
-      margin: 0 2px;
-    }
-
-    /* Индикатор текущего состояния (Ходьба / Бег) */
-    .speed-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 4px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .speed-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #51c476;
-      box-shadow: 0 0 8px #51c476;
-    }
-    .speed-dot.running {
-      background: #ffab40;
-      box-shadow: 0 0 10px #ffab40;
-    }
-
-    /* Модальное окно с разметкой GDD */
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(10, 7, 14, 0.7);
-      backdrop-filter: blur(6px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      z-index: 100;
-    }
-    .modal-backdrop.show {
-      display: flex;
-    }
-    .modal-panel {
-      background: #201827;
-      border: 1px solid #63506e;
-      border-radius: 14px;
-      max-width: 760px;
-      width: 100%;
-      max-height: 85vh;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
-      color: #e0d5e5;
-    }
-    .modal-header {
-      padding: 18px 22px;
-      border-bottom: 1px solid #3d2f47;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .modal-title {
-      font-size: 17px;
-      font-weight: 800;
-      color: #ffde8a;
-    }
-    .modal-close {
-      background: transparent;
-      border: none;
-      color: #b7a9bf;
-      font-size: 20px;
-      cursor: pointer;
-      padding: 4px 8px;
-    }
-    .modal-close:hover {
-      color: #fff;
-    }
-    .modal-body {
-      padding: 20px 24px;
-      overflow-y: auto;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .gdd-section {
-      background: #281e31;
-      border: 1px solid #433350;
-      border-radius: 8px;
-      padding: 14px 16px;
-      margin-bottom: 14px;
-    }
-    .gdd-section h4 {
-      margin: 0 0 8px 0;
-      color: #f7eee2;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .gdd-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 8px;
-    }
-    .gdd-item {
-      background: rgba(18, 13, 23, 0.4);
-      padding: 8px 10px;
-      border-radius: 6px;
-      border-left: 3px solid #793a96;
-    }
-    .gdd-key {
-      color: #a494a8;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .gdd-val {
-      font-weight: 700;
-      color: #f0e6d6;
-      margin-top: 2px;
-    }
-
-    /* Подсказка для file:// */
-    .file-protocol-tip {
-      position: fixed;
-      top: 80px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(43, 30, 20, 0.95);
-      border: 1px solid #d9822b;
-      color: #ffebcc;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      z-index: 200;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-      display: none;
-    }
-
-    @media (max-width: 680px) {
-      .hud {
-        padding: 12px;
-      }
-      .hud-card {
-        padding: 8px 12px;
-      }
-      .legend {
-        display: none;
-      }
-    }
   </style>
 </head>
 <body>
-
-  <!-- Three.js Canvas Container -->
+  <!-- Three.js Canvas Container (Чистый игровой экран без интерфейса) -->
   <div id="game-canvas-container"></div>
 
-  <!-- Верхний HUD -->
-  <div class="hud">
-    <div class="hud-card">
-      <div class="title-row">
-        <span class="badge">ЭТАП 1</span>
-        <span class="title">Сестра Агата</span>
-      </div>
-      <div class="stats-row">
-        <div class="stat-item">
-          <span class="stat-label">ЗДОРОВЬЕ</span>
-          <div class="hp-bar-outer" title="100 / 100 HP">
-            <div class="hp-bar-inner" id="hp-bar" style="width: 100%;"></div>
-          </div>
-          <span class="stat-value" id="hp-text">100 HP</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">СЕМЕНА</span>
-          <span class="stat-value" id="seeds-text">🌰 100</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">КАМЕРЫ</span>
-          <span class="stat-value" id="cams-text">📷 2 free</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="hud-actions">
-      <button class="hud-btn" id="btn-zoom-out" title="Отдалить камеру">−</button>
-      <button class="hud-btn" id="btn-zoom-in" title="Приблизить камеру">+</button>
-      <button class="hud-btn" id="btn-gdd-data" title="Посмотреть полную разметку GDD">📋 Разметка GDD</button>
-    </div>
-  </div>
-
-  <!-- Подсказка по управлению -->
-  <div class="legend">
-    <div class="legend-title">Управление Сестрой Агатой</div>
-    <div>Перемещение: <span class="key-badge">W</span> <span class="key-badge">A</span> <span class="key-badge">S</span> <span class="key-badge">D</span> или <span class="key-badge">Стрелки</span> (ЦФЫВ)</div>
-    <div>Бег (ускорение): удерживайте <span class="key-badge">Shift</span></div>
-    <div>Масштаб: <span class="key-badge">Колесико мыши</span> или кнопки сверху</div>
-    <div class="speed-indicator">
-      <div class="speed-dot" id="speed-dot"></div>
-      <span id="speed-text" style="color: #c7dcd0;">Покой (0 м/с)</span>
-    </div>
-  </div>
-
-  <!-- Модальное окно с разметкой GDD -->
-  <div class="modal-backdrop" id="gdd-modal">
-    <div class="modal-panel">
-      <div class="modal-header">
-        <div class="modal-title">Разметка данных геймдизайна (Модульная архитектура)</div>
-        <button class="modal-close" id="btn-modal-close" aria-label="Закрыть">✕</button>
-      </div>
-      <div class="modal-body" id="modal-gdd-content">
-        <!-- Генерируется динамически из src/config/ -->
-      </div>
-    </div>
-  </div>
-
-  <div class="file-protocol-tip" id="file-protocol-tip">
-    💡 Для поддержки модульной архитектуры запустите локальный сервер: <code>npm start</code> или <code>node serve.js</code>
-  </div>
-
-  <script>
-    if (window.location.protocol === 'file:') {
-      const tip = document.getElementById('file-protocol-tip');
-      if (tip) tip.style.display = 'block';
-    }
-  </script>
-
-  <!-- Загрузка модульной игры -->
+  <!-- Точка входа игры -->
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

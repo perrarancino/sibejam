@@ -7,6 +7,7 @@ import { input } from './core/input.js';
 import { SceneManager } from './core/scene.js';
 import { GraveyardMap } from './entities/map.js';
 import { Player } from './entities/player.js';
+import { FogMistManager } from './entities/fogMist.js';
 import { hud } from './ui/hud.js';
 
 // Экспорт в window для удобной отладки в консоли браузера
@@ -20,9 +21,10 @@ class Game {
     this.sceneManager = new SceneManager(container);
     this.map = new GraveyardMap(this.sceneManager.scene);
     this.player = new Player(this.sceneManager.scene);
+    this.fogMist = new FogMistManager(this.sceneManager.scene, this.map.fieldSize + 10);
     this.hud = hud;
 
-    // Кнопки зума
+    // Кнопки зума (если присутствуют)
     document.querySelector('#btn-zoom-in')?.addEventListener('click', () => {
       this.sceneManager.setZoom(this.sceneManager.zoomLevel * 1.15);
     });
@@ -33,7 +35,7 @@ class Game {
     this.lastTime = performance.now();
     this.boundLimit = this.map.getBoundaryLimit(this.player.radius);
 
-    // Первоначальный рендер HUD
+    // Первоначальный рендер HUD (если элементы есть)
     this.hud.renderState(gameState.get());
 
     this.animate = this.animate.bind(this);
@@ -51,7 +53,10 @@ class Game {
     // Обновление состояния персонажа
     this.player.update(inputData, this.boundLimit, dt, now);
 
-    // Обновление UI
+    // Обновление живой дымки и колышущегося тумана
+    this.fogMist.update(this.player.getPosition(), dt, now);
+
+    // Обновление UI (если есть)
     this.hud.updateMovementStatus(inputData.isMoving, inputData.isRunning);
 
     // Следование камеры за Агатой
