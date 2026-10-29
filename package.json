@@ -1,0 +1,13 @@
+{
+  "name": "sibejam-sister-agata",
+  "version": "1.0.0",
+  "description": "Сестра Агата: Освященный Дозор (Sibejam 2.5D)",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.js",
+    "dev": "node serve.js"
+  },
+  "keywords": ["game", "threejs", "isometric", "sibejam"],
+  "author": "",
+  "license": "MIT"
+}
