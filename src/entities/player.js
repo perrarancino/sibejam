@@ -59,13 +59,13 @@ export class Player {
 
     // Освященный фонарь
     this.lanternGroup = new THREE.Group();
-    this.lanternGroup.position.set(this.cubeSize / 2 + 0.2, this.cubeSize * 0.55, this.cubeSize / 4);
+    this.baseLanternPos = new THREE.Vector3(this.cubeSize / 2 + 0.2, this.cubeSize * 0.55, this.cubeSize / 4);
+    this.lanternGroup.position.copy(this.baseLanternPos);
 
     const lanternMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.2, 0.28, 0.2),
       new THREE.MeshStandardMaterial({ color: 0x3d3127, metalness: 0.6, roughness: 0.3 })
     );
-    // Фонарь не должен отбрасывать тень сам на себя и на землю под собой
     lanternMesh.castShadow = false;
     this.lanternGroup.add(lanternMesh);
 
@@ -119,7 +119,6 @@ export class Player {
     this.lanternGroup.add(this.auraLight);
 
     this.haloSprite = haloSprite;
-    this.baseLanternPos = new THREE.Vector3(this.cubeSize / 2 + 0.2, this.cubeSize * 0.55, this.cubeSize / 4);
     this.windLag = new THREE.Vector3(0, 0, 0);
 
     // 4. Подсветка непосредственно под ногами героини (равномерное основание)
@@ -129,119 +128,6 @@ export class Player {
     this.group.add(this.feetLight);
 
     this.group.add(this.lanternGroup);
-
-    // 5. Проекция теней от кованых прутьев фонаря на землю (живой жировик/масляный фонарь)
-    this.createCageShadowDisc();
-
-    // 6. Золотые искры и пылинки, парящие в теплом конусе света
-    this.createLightMotes();
-  }
-
-  /**
-   * Проекция кованой решетки фонаря на землю.
-   * Тени от вертикальных прутьев плавно покачиваются и дышат при движении.
-   */
-  createCageShadowDisc() {
-    const cv = document.createElement('canvas');
-    cv.width = 256;
-    cv.height = 256;
-    const ctx = cv.getContext('2d');
-
-    // Радиальный градиент света с тенями от 8 прутьев
-    const grad = ctx.createRadialGradient(128, 128, 6, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(255, 230, 160, 0.7)');
-    grad.addColorStop(0.4, 'rgba(235, 170, 80, 0.45)');
-    grad.addColorStop(0.75, 'rgba(180, 95, 30, 0.18)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-
-    // Прорисовка 8 мягких теней от прутьев клетки
-    ctx.save();
-    ctx.translate(128, 128);
-    ctx.strokeStyle = 'rgba(18, 12, 10, 0.42)';
-    ctx.lineWidth = 14;
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 8; i++) {
-      ctx.rotate((Math.PI * 2) / 8);
-      ctx.beginPath();
-      ctx.moveTo(14, 0);
-      ctx.lineTo(124, 0);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    const tex = new THREE.CanvasTexture(cv);
-    const discMat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    const discGeo = new THREE.PlaneGeometry(12.5, 12.5);
-    this.cageDisc = new THREE.Mesh(discGeo, discMat);
-    this.cageDisc.rotation.x = -Math.PI / 2;
-    this.cageDisc.position.y = 0.025; // прямо над плиткой
-    this.group.add(this.cageDisc);
-  }
-
-  /**
-   * Золотые пылинки и взвесь, парящие в воздухе в лучах фонаря.
-   */
-  createLightMotes() {
-    const cv = document.createElement('canvas');
-    cv.width = 32;
-    cv.height = 32;
-    const ctx = cv.getContext('2d');
-    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, 'rgba(255, 245, 200, 1.0)');
-    grad.addColorStop(0.3, 'rgba(255, 195, 80, 0.6)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 32, 32);
-    const moteTex = new THREE.CanvasTexture(cv);
-
-    this.motes = [];
-    this.moteGroup = new THREE.Group();
-    this.group.add(this.moteGroup);
-
-    const count = 22;
-    for (let i = 0; i < count; i++) {
-      const mat = new THREE.SpriteMaterial({
-        map: moteTex,
-        color: 0xffd375,
-        blending: THREE.AdditiveBlending,
-        transparent: true,
-        opacity: 0.35 + Math.random() * 0.45,
-        depthWrite: false
-      });
-      const sprite = new THREE.Sprite(mat);
-      const scale = 0.1 + Math.random() * 0.12;
-      sprite.scale.set(scale, scale, 1);
-
-      const r = 0.6 + Math.random() * 3.2;
-      const angle = Math.random() * Math.PI * 2;
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = 0.2 + Math.random() * 1.5;
-      sprite.position.set(x, y, z);
-      this.moteGroup.add(sprite);
-
-      this.motes.push({
-        sprite,
-        mat,
-        x,
-        z,
-        y,
-        r,
-        angle,
-        speedY: 0.08 + Math.random() * 0.15,
-        speedAngle: 0.15 + Math.random() * 0.25,
-        phase: Math.random() * Math.PI * 2,
-        baseOpacity: mat.opacity
-      });
-    }
   }
 
   update(inputData, boundLimit, dt, now) {
@@ -263,7 +149,7 @@ export class Player {
       this.group.position.x = THREE.MathUtils.clamp(this.group.position.x + worldDx, -boundLimit, boundLimit);
       this.group.position.z = THREE.MathUtils.clamp(this.group.position.z + worldDz, -boundLimit, boundLimit);
 
-      // Плавный поворот в сторону движения
+      // Плавный поворот куба в сторону движения
       this.targetRotation = Math.atan2(worldDx, worldDz);
       const diff = Math.atan2(
         Math.sin(this.targetRotation - this.currentRotation),
@@ -368,29 +254,6 @@ export class Player {
     // Анимация ореола пламени
     if (this.haloSprite) {
       this.haloSprite.scale.set(haloScale, haloScale, 1);
-    }
-
-    // Анимация теней от прутьев решетки фонаря на земле
-    if (this.cageDisc) {
-      this.cageDisc.rotation.z = this.currentRotation + Math.sin(now * 0.002) * 0.12;
-      this.cageDisc.material.opacity = THREE.MathUtils.clamp(0.42 + flameFlicker * 0.05, 0.2, 0.65);
-    }
-
-    // Анимация золотистых парящих пылинок в воздухе
-    if (this.motes) {
-      for (let i = 0; i < this.motes.length; i++) {
-        const m = this.motes[i];
-        m.y += m.speedY * dt;
-        m.angle += m.speedAngle * dt;
-        if (m.y > 2.2) {
-          m.y = 0.2;
-          m.r = 0.6 + Math.random() * 3.2;
-        }
-        m.sprite.position.x = Math.cos(m.angle) * m.r;
-        m.sprite.position.z = Math.sin(m.angle) * m.r;
-        m.sprite.position.y = m.y;
-        m.mat.opacity = m.baseOpacity * (0.6 + 0.4 * Math.sin(now * 0.005 + m.phase));
-      }
     }
   }
 
