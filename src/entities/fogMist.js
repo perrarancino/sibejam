@@ -76,34 +76,17 @@ export class FogMistManager {
         vec2 worldXZ = vWorldPosition.xz;
         float dist = distance(worldXZ, uPlayerPos.xz);
 
-        // Двухслойный анимированный ветер тумана
-        vec2 wind1 = vec2(uTime * 0.08, uTime * 0.04);
-        vec2 wind2 = vec2(-uTime * 0.05, uTime * 0.07);
-        float n1 = snoise(worldXZ * 0.14 + wind1);
-        float n2 = snoise(worldXZ * 0.28 + wind2) * 0.5;
-        float mistNoise = (n1 + n2); // диапазон примерно [-1.2, 1.2]
-
-        // Граница света динамически искажается клубами тумана
-        // Вблизи Агаты (dist < clearRadius) туман СТРОГО равен 0 (никаких черных пятен у ног!)
-        float clearRadius = uLanternRadius * 0.65 + mistNoise * 1.4;
-        clearRadius = max(2.5, clearRadius);
-
-        // Нарастание тумана от границы света во внешнюю тьму
-        float fogDensity = smoothstep(clearRadius, clearRadius + 3.2, dist);
-
-        // Цвета:
-        // Внешний туман — кромешная ночная мгла
-        vec3 darkFogColor = vec3(0.024, 0.016, 0.032);
-        // Золотистый отсвет фонаря на клубящейся дымке
-        vec3 holyGlowColor = vec3(0.96, 0.74, 0.38);
-
-        // Подсветка дымки на границе света (дымка светится в лучах)
-        float rimFactor = smoothstep(clearRadius - 0.8, clearRadius + 1.2, dist) * (1.0 - smoothstep(clearRadius + 1.2, clearRadius + 4.5, dist));
-        vec3 finalColor = mix(darkFogColor, holyGlowColor, rimFactor * 0.45 * (0.6 + 0.4 * n1));
-
-        float alpha = clamp(fogDensity * 0.98, 0.0, 0.98);
-
-        gl_FragColor = vec4(finalColor, alpha);
+        // Слоистые вытянутые потоки и мягкая, неровная граница видимости.
+        vec2 flow = vec2(worldXZ.x * 0.10 + worldXZ.y * 0.035, worldXZ.y * 0.24);
+        float warp = snoise(flow * 0.75 + vec2(uTime * 0.025, -uTime * 0.018));
+        float ribbons = snoise(flow + vec2(warp * 0.55 + uTime * 0.035, -uTime * 0.02));
+        float fine = snoise(flow * 1.9 + vec2(-uTime * 0.018, uTime * 0.027));
+        float veil = smoothstep(1.7, 9.0, dist + ribbons * 0.38 + warp * 0.18);
+        float opaqueFog = smoothstep(7.5, 13.5, dist);
+        float variation = clamp(0.9 + ribbons * 0.07 + fine * 0.035, 0.62, 1.0);
+        vec3 fogColor = mix(vec3(0.035, 0.055, 0.047), vec3(0.10, 0.14, 0.115), clamp(0.5 + 0.25 * ribbons, 0.0, 1.0));
+        float alpha = mix(clamp(veil * 0.82 * variation, 0.0, 0.82), 1.0, opaqueFog);
+        gl_FragColor = vec4(fogColor, alpha);
       }
     `;
 
@@ -153,14 +136,14 @@ export class FogMistManager {
     const mistTexture = new THREE.CanvasTexture(cv);
 
     this.wisps = [];
-    const count = 38;
+    const count = 18;
     const spawnRange = this.fieldSize * 0.44;
 
     for (let i = 0; i < count; i++) {
       const size = 3.0 + Math.random() * 3.5;
       const mat = new THREE.SpriteMaterial({
         map: mistTexture,
-        color: 0xffd185,
+        color: 0xa9c1ae,
         transparent: true,
         opacity: 0.08 + Math.random() * 0.12,
         blending: THREE.AdditiveBlending, // Аддитивное смешивание — никакого затемнения!
@@ -187,7 +170,7 @@ export class FogMistManager {
         speedX: 0.12 + Math.random() * 0.28,
         speedZ: 0.08 + Math.random() * 0.2,
         phase: Math.random() * Math.PI * 2,
-        maxOpacity: 0.14 + Math.random() * 0.12,
+        maxOpacity: 0.035 + Math.random() * 0.025,
         size
       });
     }
