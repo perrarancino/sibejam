@@ -112,6 +112,10 @@ export class Player {
     this.auraLight.castShadow = false;
     this.lanternGroup.add(this.auraLight);
 
+    this.haloSprite = haloSprite;
+    this.baseLanternPos = new THREE.Vector3(this.cubeSize / 2 + 0.2, this.cubeSize * 0.55, this.cubeSize / 4);
+    this.windLag = new THREE.Vector3(0, 0, 0);
+
     // Подсветка непосредственно под ногами героини (исключает любые темные провалы у ног)
     this.feetLight = new THREE.PointLight(0xffbe66, 3.5, 5.0, 1.3);
     this.feetLight.position.set(0, 0.35, 0);
@@ -123,6 +127,8 @@ export class Player {
 
   update(inputData, boundLimit, dt, now) {
     const { screenX, screenY, isMoving, isRunning } = inputData;
+    let worldDx = 0;
+    let worldDz = 0;
 
     if (isMoving) {
       // Преобразование экранного ввода в мировые изометрические координаты
@@ -131,8 +137,8 @@ export class Player {
       const normY = screenY / screenLen;
 
       const speed = isRunning ? HEROINE_CONFIG.runSpeed : HEROINE_CONFIG.walkSpeed;
-      const worldDx = (normX - normY) * 0.70710678 * speed * dt;
-      const worldDz = (-normX - normY) * 0.70710678 * speed * dt;
+      worldDx = (normX - normY) * 0.70710678 * speed * dt;
+      worldDz = (-normX - normY) * 0.70710678 * speed * dt;
 
       // Перемещение с ограничением границ карты
       this.group.position.x = THREE.MathUtils.clamp(this.group.position.x + worldDx, -boundLimit, boundLimit);
@@ -147,22 +153,100 @@ export class Player {
       this.currentRotation += diff * Math.min(1.0, 14 * dt);
       this.group.rotation.y = this.currentRotation;
 
-      // Анимация покачивания фонаря и куба
+      // Анимация шага Агаты и вертикального покачивания
       const bobFreq = isRunning ? 16 : 10;
-      const bob = Math.sin(now * 0.001 * bobFreq) * (isRunning ? 0.06 : 0.03);
-      this.lanternGroup.position.y = (this.cubeSize * 0.55) + bob;
-      this.bodyCube.position.y = (this.cubeSize * 1.1) / 2 + Math.abs(bob) * 0.5;
+      const bobAmp = isRunning ? 0.055 : 0.028;
+      const bob = Math.sin(now * 0.001 * bobFreq) * bobAmp;
+      this.bodyCube.position.y = (this.cubeSize * 1.1) / 2 + Math.abs(bob) * 0.6;
+
+      // Инерционное отставание фонаря от ветра при движении
+      const dragFactor = isRunning ? 0.024 : 0.012;
+      const targetLagX = -worldDx / (dt || 0.016) * dragFactor;
+      const targetLagZ = -worldDz / (dt || 0.016) * dragFactor;
+      this.windLag.x = THREE.MathUtils.lerp(this.windLag.x, targetLagX, 12 * dt);
+      this.windLag.z = THREE.MathUtils.lerp(this.windLag.z, targetLagZ, 12 * dt);
+
+      this.lanternGroup.position.set(
+        this.baseLanternPos.x + this.windLag.x,
+        this.baseLanternPos.y + bob,
+        this.baseLanternPos.z + this.windLag.z
+      );
+
+      // Наклон фонаря от сопротивления воздуха
+      if (isRunning) {
+        this.lanternGroup.rotation.x = THREE.MathUtils.lerp(this.lanternGroup.rotation.x, -0.22, 12 * dt);
+        this.lanternGroup.rotation.z = THREE.MathUtils.lerp(this.lanternGroup.rotation.z, Math.sin(now * 0.015) * 0.12, 12 * dt);
+      } else {
+        const pendulum = Math.sin(now * 0.001 * 10) * 0.08;
+        this.lanternGroup.rotation.x = THREE.MathUtils.lerp(this.lanternGroup.rotation.x, -0.06, 8 * dt);
+        this.lanternGroup.rotation.z = THREE.MathUtils.lerp(this.lanternGroup.rotation.z, pendulum, 8 * dt);
+      }
     } else {
       // Плавный возврат в исходное положение покоя
-      this.lanternGroup.position.y = THREE.MathUtils.lerp(this.lanternGroup.position.y, this.cubeSize * 0.55, 10 * dt);
       this.bodyCube.position.y = THREE.MathUtils.lerp(this.bodyCube.position.y, (this.cubeSize * 1.1) / 2, 10 * dt);
+      this.windLag.lerp(new THREE.Vector3(0, 0, 0), 10 * dt);
+      this.lanternGroup.position.set(
+        THREE.MathUtils.lerp(this.lanternGroup.position.x, this.baseLanternPos.x, 10 * dt),
+        THREE.MathUtils.lerp(this.lanternGroup.position.y, this.baseLanternPos.y, 10 * dt),
+        THREE.MathUtils.lerp(this.lanternGroup.position.z, this.baseLanternPos.z, 10 * dt)
+      );
+      this.lanternGroup.rotation.x = THREE.MathUtils.lerp(this.lanternGroup.rotation.x, 0, 10 * dt);
+      this.lanternGroup.rotation.z = THREE.MathUtils.lerp(this.lanternGroup.rotation.z, 0, 10 * dt);
     }
 
-    // Живое мерцание пламени фонаря
-    const flicker = Math.sin(now * 0.007) * 0.45 + Math.cos(now * 0.013) * 0.22;
-    this.lanternLight.intensity = 7.5 + flicker;
-    this.auraLight.intensity = 4.0 + flicker * 0.4;
-    this.feetLight.intensity = 3.5 + flicker * 0.3;
+    // =========================================================================
+    // ФИЗИКА ДРОЖАНИЯ ПЛАМЕНИ (FLAME FLICKER & WIND DRAFT)
+    // Покой: мягкое размеренное дыхание огня.
+    // Ходьба: легкое дрожание от встречного воздуха.
+    // Бег: резкие, неистовые порывы ветра, метание пламени и скачки яркости.
+    // =========================================================================
+    let flameFlicker = 0;
+    let haloScale = 1.0;
+
+    if (isRunning) {
+      // Бег: сильное турбулентное дрожание и порывы ветра
+      const gust1 = Math.sin(now * 0.034) * 1.35;
+      const gust2 = Math.cos(now * 0.058) * 0.85;
+      const microWind = (Math.sin(now * 0.092) * 0.45 + (Math.random() - 0.5) * 0.65);
+      flameFlicker = gust1 + gust2 + microWind;
+
+      // Динамический сдвиг цветовой температуры (при задувании — глубокий янтарь, при вспышке — яркое золото)
+      const colorT = THREE.MathUtils.clamp((flameFlicker + 1.8) / 3.6, 0.0, 1.0);
+      this.lanternLight.color.setRGB(
+        1.0,
+        THREE.MathUtils.lerp(0.68, 0.94, colorT),
+        THREE.MathUtils.lerp(0.24, 0.65, colorT)
+      );
+
+      haloScale = THREE.MathUtils.clamp(1.0 + flameFlicker * 0.16, 0.65, 1.45);
+    } else if (isMoving) {
+      // Ходьба: умеренное, более слабое дрожание пламени
+      const walkDraft1 = Math.sin(now * 0.015) * 0.55;
+      const walkDraft2 = Math.cos(now * 0.026) * 0.35;
+      const microDraft = (Math.sin(now * 0.048) * 0.18);
+      flameFlicker = walkDraft1 + walkDraft2 + microDraft;
+
+      this.lanternLight.color.setRGB(1.0, 0.87, 0.53);
+      haloScale = THREE.MathUtils.clamp(1.0 + flameFlicker * 0.08, 0.85, 1.2);
+    } else {
+      // Покой: плавное, мягкое дыхание фитиля
+      const calm1 = Math.sin(now * 0.0035) * 0.28;
+      const calm2 = Math.sin(now * 0.008) * 0.16;
+      flameFlicker = calm1 + calm2;
+
+      this.lanternLight.color.setRGB(1.0, 0.87, 0.53);
+      haloScale = 1.0 + calm1 * 0.05;
+    }
+
+    // Применение яркости к источникам света
+    this.lanternLight.intensity = THREE.MathUtils.clamp(7.5 + flameFlicker, 3.8, 11.5);
+    this.auraLight.intensity = THREE.MathUtils.clamp(4.0 + flameFlicker * 0.45, 2.2, 6.2);
+    this.feetLight.intensity = THREE.MathUtils.clamp(3.5 + flameFlicker * 0.3, 2.0, 5.0);
+
+    // Анимация ореола пламени
+    if (this.haloSprite) {
+      this.haloSprite.scale.set(haloScale, haloScale, 1);
+    }
   }
 
   getPosition() {
