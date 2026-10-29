@@ -26,14 +26,14 @@ export class GraveyardMap {
     cv.height = 512;
     const ctx = cv.getContext('2d');
 
-    // Кладбищенская земля
-    ctx.fillStyle = '#201925';
+    // Кладбищенская земля (сырая темная брусчатка)
+    ctx.fillStyle = '#1c1622';
     ctx.fillRect(0, 0, 512, 512);
 
-    // Тактическая плиточная сетка
+    // Сетка каменных плит
     const tileSize = 64;
-    ctx.strokeStyle = '#2d2235';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#120e16';
+    ctx.lineWidth = 3;
     for (let x = 0; x <= 512; x += tileSize) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -47,12 +47,12 @@ export class GraveyardMap {
       ctx.stroke();
     }
 
-    // Текстурный гравий и шумы
-    for (let i = 0; i < 2400; i++) {
+    // Текстурный гравий и сколы камня
+    for (let i = 0; i < 2600; i++) {
       const px = Math.random() * 512;
       const py = Math.random() * 512;
       const r = Math.random() * 1.5;
-      ctx.fillStyle = Math.random() > 0.5 ? '#17111b' : '#392c43';
+      ctx.fillStyle = Math.random() > 0.4 ? '#140f1a' : '#2d2235';
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fill();
@@ -66,12 +66,94 @@ export class GraveyardMap {
     return tex;
   }
 
+  createGroundBumpTexture() {
+    const cv = document.createElement('canvas');
+    cv.width = 512;
+    cv.height = 512;
+    const ctx = cv.getContext('2d');
+
+    // Базовый уровень плит (серый рельеф)
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Углубления швов между плитами (темные канавки)
+    const tileSize = 64;
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 4;
+    for (let x = 0; x <= 512; x += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 512);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= 512; y += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(512, y);
+      ctx.stroke();
+    }
+
+    // Выступающие камешки и зернистость камня (светлые точки)
+    for (let i = 0; i < 2800; i++) {
+      const px = Math.random() * 512;
+      const py = Math.random() * 512;
+      const r = Math.random() * 1.6;
+      ctx.fillStyle = Math.random() > 0.5 ? '#b8b8b8' : '#555555';
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(this.fieldSize / 4, this.fieldSize / 4);
+    return tex;
+  }
+
+  createGroundRoughnessTexture() {
+    const cv = document.createElement('canvas');
+    cv.width = 512;
+    cv.height = 512;
+    const ctx = cv.getContext('2d');
+
+    // Сырые каменные плиты (умеренно гладкие, ловят легкие блики света)
+    ctx.fillStyle = '#656565';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Матовые сухие швы
+    const tileSize = 64;
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.lineWidth = 3;
+    for (let x = 0; x <= 512; x += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 512);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= 512; y += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(512, y);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(this.fieldSize / 4, this.fieldSize / 4);
+    return tex;
+  }
+
   createGround() {
     const groundGeo = new THREE.BoxGeometry(this.fieldSize, 0.6, this.fieldSize);
     const groundMat = new THREE.MeshStandardMaterial({
       map: this.createGroundTexture(),
-      roughness: 0.88,
-      metalness: 0.1
+      bumpMap: this.createGroundBumpTexture(),
+      bumpScale: 0.045,
+      roughnessMap: this.createGroundRoughnessTexture(),
+      roughness: 0.52,
+      metalness: 0.15
     });
     this.groundMesh = new THREE.Mesh(groundGeo, groundMat);
     this.groundMesh.position.y = -0.3;
@@ -123,16 +205,32 @@ export class GraveyardMap {
 
     // Золотистый освященный круг
     const ringGeo = new THREE.RingGeometry(1.6, 1.8, 32);
-    const ringMat = new THREE.MeshBasicMaterial({
+    this.ringMat = new THREE.MeshBasicMaterial({
       color: 0xd9822b,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.35
+      opacity: 0.45
     });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(0, 0.09, 0);
-    this.group.add(ring);
+    this.ring = new THREE.Mesh(ringGeo, this.ringMat);
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.position.set(0, 0.09, 0);
+    this.group.add(this.ring);
+
+    // Мягкое священное свечение сердца клумбы
+    this.relicLight = new THREE.PointLight(0xd9822b, 1.8, 6.5, 1.6);
+    this.relicLight.position.set(0, 0.4, 0);
+    this.group.add(this.relicLight);
+  }
+
+  update(now) {
+    // Медленное дыхание святыни (пульсация благодати)
+    const pulse = Math.sin(now * 0.002) * 0.35;
+    if (this.relicLight) {
+      this.relicLight.intensity = 1.8 + pulse;
+    }
+    if (this.ringMat) {
+      this.ringMat.opacity = 0.4 + pulse * 0.15;
+    }
   }
 
   getBoundaryLimit(characterRadius) {

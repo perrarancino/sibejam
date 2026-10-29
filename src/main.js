@@ -53,6 +53,9 @@ class Game {
     // Обновление состояния персонажа
     this.player.update(inputData, this.boundLimit, dt, now);
 
+    // Обновление анимаций карты (пульсация святыни)
+    this.map.update(now);
+
     // Обновление живой дымки и колышущегося тумана
     this.fogMist.update(this.player.getPosition(), dt, now);
 
