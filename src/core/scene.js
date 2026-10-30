@@ -28,7 +28,7 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 0.92;
     this.container.appendChild(this.renderer.domElement);
 
     this.initLights();
@@ -38,15 +38,15 @@ export class SceneManager {
 
   initLights() {
     // Мягкий ночной заполняющий свет (подчеркивает детали в тени)
-    this.ambientLight = new THREE.AmbientLight(0x536a94, 0.38);
+    this.ambientLight = new THREE.AmbientLight(0x536a94, 0.27);
     this.scene.add(this.ambientLight);
 
     // Холодный свет неба и мягкий отражённый свет от земли.
-    this.skyLight = new THREE.HemisphereLight(0x8daee8, 0x252736, 0.85);
+    this.skyLight = new THREE.HemisphereLight(0x8daee8, 0x252736, 0.62);
     this.scene.add(this.skyLight);
 
     // Холодный лунный свет (отбрасывает мягкие тени от персонажа и стен)
-    this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.8);
+    this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.58);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
     this.moonLight.shadow.mapSize.width = 2048;
@@ -83,7 +83,7 @@ export class SceneManager {
   }
 
   setZoom(val) {
-    this.zoomLevel = THREE.MathUtils.clamp(val, 0.65, 2.2);
+    this.zoomLevel = THREE.MathUtils.clamp(val, 0.65, 4.0);
     this.camera.zoom = this.zoomLevel;
     this.camera.updateProjectionMatrix();
   }

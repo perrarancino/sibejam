@@ -4,10 +4,10 @@
 import { GAME_DESIGN } from './config/index.js';
 import { gameState } from './state/gameState.js';
 import { input } from './core/input.js';
-import { SceneManager } from './core/scene.js?v=tile-floor-1';
-import { GraveyardMap } from './entities/map.js?v=tile-arrange-1';
-import { Player } from './entities/player.js?v=shadow-arrow-1';
-import { Decorations } from './entities/decorations.js?v=church-3';
+import { SceneManager } from './core/scene.js?v=darker-night-1';
+import { GraveyardMap } from './entities/map.js?v=flashlight-layers-1';
+import { Player } from './entities/player.js?v=soft-flashlight-1';
+import { Decorations } from './entities/decorations.js?v=candles-places-1';
 import { FogMistManager } from './entities/fogMist.js?v=round-fog-1';
 import { hud } from './ui/hud.js';
 
@@ -53,11 +53,11 @@ class Game {
     gameState.update({ isRunning: inputData.isRunning });
 
     // Обновление состояния персонажа
-    this.player.update(inputData, this.boundLimit, dt, now);
+    this.player.update(inputData, this.boundLimit, dt, this.decorations);
 
     // Обновление анимаций карты (пульсация святыни)
     this.map.update(now);
-    this.decorations.update(now);
+    this.decorations.update(now, this.player.getPosition(), this.sceneManager.camera);
 
     // Обновление живой дымки и колышущегося тумана
     this.fogMist.update(this.player.getPosition(), dt, now);
@@ -68,6 +68,7 @@ class Game {
     // Следование камеры за Агатой
     this.sceneManager.updateCameraTracking(this.player.getPosition(), dt);
     this.player.bodyCube.quaternion.copy(this.sceneManager.camera.quaternion);
+    this.player.updateFlashlight(this.sceneManager.camera);
 
     // Отрисовка кадра
     this.sceneManager.render();

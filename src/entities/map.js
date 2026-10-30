@@ -144,37 +144,17 @@ export class GraveyardMap {
   }
 
   createGround() {
-    const canvas = document.createElement('canvas');
-    // Assemble small tiles into a seamless, pixel-sized atlas.
-    canvas.width = canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#211d2b';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const texture = new THREE.CanvasTexture(canvas);
+    const groundGeo = new THREE.BoxGeometry(this.fieldSize, 0.6, this.fieldSize);
+    const texture = new THREE.TextureLoader().load('./assets/ground-krita.png?v=2');
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(this.fieldSize / 8, this.fieldSize / 8);
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.repeat.set(this.fieldSize / 8, this.fieldSize / 8);
-    const image = new Image();
-    image.onload = () => {
-      ctx.clearRect(0,0,128,128);
-      ctx.fillStyle = '#211d2b';
-      ctx.fillRect(0,0,128,128);
-      ctx.imageSmoothingEnabled = false;
-      // Keep each original 2×2 tile group intact; rotate whole groups only.
-      for (let y=0;y<2;y++) for(let x=0;x<2;x++) {
-        ctx.save();
-        ctx.translate(x*64+32,y*64+32);
-        ctx.rotate(((x+y*2)%4)*Math.PI/2);
-        ctx.drawImage(image,0,0,64,64,-32,-32,64,64);
-        ctx.restore();
-      }
-      texture.needsUpdate = true;
-    };
-    image.src = './assets/grass-sheet.png';
-    const groundGeo = new THREE.BoxGeometry(this.fieldSize, 0.6, this.fieldSize);
-    const groundMat = new THREE.MeshStandardMaterial({map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 1, metalness: 0});
+    const groundMat = new THREE.MeshStandardMaterial({
+      map: texture, emissiveMap: texture, emissive: 0xffffff,
+      emissiveIntensity: 0.12, roughness: 1, metalness: 0
+    });
     this.groundMesh = new THREE.Mesh(groundGeo, groundMat);
     this.groundMesh.position.y = -0.3;
     this.groundMesh.receiveShadow = true;
