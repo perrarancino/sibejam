@@ -87,15 +87,15 @@ export class FogMistManager {
         vec2 worldXZ = (rayStart + ray * hit).xz;
         float dist = distance(worldXZ, uPlayerPos.xz);
 
-        // Слоистые вытянутые потоки и мягкая, неровная граница видимости.
-        vec2 flow = vec2(worldXZ.x * 0.10 + worldXZ.y * 0.035, worldXZ.y * 0.24);
+        // Прежние слои шума, но с одинаковым масштабом по обеим осям.
+        vec2 flow = worldXZ * 0.14;
         float warp = snoise(flow * 0.75 + vec2(uTime * 0.025, -uTime * 0.018));
-        float ribbons = snoise(flow + vec2(warp * 0.55 + uTime * 0.035, -uTime * 0.02));
-        float fine = snoise(flow * 1.9 + vec2(-uTime * 0.018, uTime * 0.027));
-        float veil = smoothstep(3.0, 11.0, dist + ribbons * 0.38 + warp * 0.18);
+        float cloud = snoise(flow + vec2(warp * 0.4 + uTime * 0.035, -uTime * 0.02));
+        float fine = snoise(flow * 1.7 + vec2(-uTime * 0.018, uTime * 0.027));
+        float veil = smoothstep(3.0, 11.0, dist + cloud * 0.38 + warp * 0.18);
         float opaqueFog = smoothstep(9.5, 16.0, dist);
-        float variation = clamp(0.9 + ribbons * 0.07 + fine * 0.035, 0.62, 1.0);
-        vec3 fogColor = mix(vec3(0.035, 0.055, 0.047), vec3(0.10, 0.14, 0.115), clamp(0.5 + 0.25 * ribbons, 0.0, 1.0));
+        float variation = clamp(0.9 + cloud * 0.07 + fine * 0.035, 0.62, 1.0);
+        vec3 fogColor = mix(vec3(0.045, 0.035, 0.06), vec3(0.12, 0.10, 0.145), clamp(0.5 + 0.25 * cloud, 0.0, 1.0));
         float alpha = mix(clamp(veil * 0.82 * variation, 0.0, 0.82), 1.0, opaqueFog);
         for (int i = 0; i < 3; i++) {
           if (i >= uCameraLightCount) break;
@@ -180,7 +180,7 @@ export class FogMistManager {
       const size = 3.0 + Math.random() * 3.5;
       const mat = new THREE.SpriteMaterial({
         map: mistTexture,
-        color: 0xa9c1ae,
+        color: 0xb7a6c9,
         transparent: true,
         opacity: 0.08 + Math.random() * 0.12,
         blending: THREE.AdditiveBlending, // Аддитивное смешивание — никакого затемнения!

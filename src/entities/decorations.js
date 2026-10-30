@@ -1,38 +1,33 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
 const loader = new THREE.TextureLoader();
+const foliageWind = {value:0};
 const beaconCanvas=document.createElement('canvas');beaconCanvas.width=64;beaconCanvas.height=64;
 const beaconCtx=beaconCanvas.getContext('2d');const beaconGradient=beaconCtx.createRadialGradient(32,32,1,32,32,32);
 beaconGradient.addColorStop(0,'rgba(225,255,215,0.5)');beaconGradient.addColorStop(0.2,'rgba(151,222,145,0.22)');beaconGradient.addColorStop(1,'rgba(100,180,115,0)');beaconCtx.fillStyle=beaconGradient;beaconCtx.fillRect(0,0,64,64);
 const beaconTexture=new THREE.CanvasTexture(beaconCanvas);
 
 async function loadModel(name) {
-  const response = await fetch(`./assets/models/${name}.json`);
+  const response = await fetch(`./assets/models/${name}.json${name === 'church' ? '?v=church-3' : ''}`);
   if (!response.ok) throw new Error(`Не удалось загрузить модель ${name}`);
   const data = await response.json();
-  const materials = data.textures.map(url => {
+  const materials = data.textures.map((url, textureIndex) => {
     const texture = loader.load(url);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     const material = new THREE.MeshStandardMaterial({map:texture, transparent:true, alphaTest:0.1, side:THREE.DoubleSide, roughness:1, emissive:0xffffff, emissiveMap:texture, emissiveIntensity:0.22});
-    if (name === 'church') {
-      material.normalMap = loader.load('./assets/models/church-normal.png');
-      material.normalScale.set(1.1, 1.1);
-      // Dark vertical openings stay dark; sloping roof surfaces keep normal lighting.
+    if (name.startsWith('new-tree-') && textureIndex > 0) {
       material.onBeforeCompile = shader => {
+        shader.uniforms.foliageWind = foliageWind;
         shader.vertexShader = shader.vertexShader
-          .replace('#include <common>', '#include <common>\nvarying float vChurchNormalY;')
-          .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvChurchNormalY = abs(objectNormal.y);');
-        shader.fragmentShader = shader.fragmentShader
-          .replace('#include <common>', '#include <common>\nvarying float vChurchNormalY;')
-          .replace('#include <opaque_fragment>', `
-            float churchLuminance = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-            float darkOpening = 1.0 - smoothstep(0.025, 0.12, churchLuminance);
-            float wallSurface = 1.0 - smoothstep(0.18, 0.5, vChurchNormalY);
-            outgoingLight *= 1.0 - darkOpening * wallSurface * 0.72;
-            #include <opaque_fragment>`);
+          .replace('#include <common>', '#include <common>\nuniform float foliageWind;')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
+            float sway = sin(foliageWind * 1.1 + modelMatrix[3].x * 0.35 + modelMatrix[3].z * 0.25);
+            transformed.x += sway * 0.085 * clamp((position.y - 0.4) / 1.5, 0.0, 1.0);
+            transformed.z += cos(foliageWind * 0.85 + modelMatrix[3].z * 0.3) * 0.04 * clamp((position.y - 0.4) / 1.5, 0.0, 1.0);`);
       };
+      material.customProgramCacheKey = () => 'foliage-wind-v1';
     }
     return material;
   });
@@ -43,6 +38,9 @@ async function loadModel(name) {
     geometry.setAttribute('uv',new THREE.Float32BufferAttribute(part.uv,2));
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry,materials[part.texture]);
+    mesh.name = part.name || '';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     mesh.position.fromArray(part.origin);
     mesh.rotation.set(...part.rotation.map(THREE.MathUtils.degToRad));
     root.add(mesh);
@@ -60,10 +58,28 @@ export class Decorations {
     this.load().catch(error=>console.error('Ошибка загрузки декораций:',error));
   }
   async load() {
-    const [tree,pillar,grave,camera,church]=await Promise.all(['tree','pillar','grave','camera','church'].map(loadModel));
+    const [broadleaf,pine,tall,bare,pillar,grave,camera,church,fence]=await Promise.all(['new-tree-broadleaf','new-tree-pine','new-tree-tall','new-tree-bare','pillar','grave','camera','church','fence'].map(loadModel));
+    const trees=[broadleaf,pine,tall,bare];
     const place=(model,x,z,scale,rotation=0)=>{const item=model.clone();item.position.set(x,0,z);item.scale.setScalar(scale);item.rotation.y=rotation;this.group.add(item);return item;};
     place(church,0,0,1.65,Math.PI);
-    [[-10,-9],[-5,-10],[1,-10],[8,-9],[-10,-3],[10,-3],[-10,4],[10,4],[-10,10],[-4,10],[3,10],[9,10],[-5,1],[6,2]].forEach(([x,z],i)=>place(tree,x,z,0.52, (i%4)*Math.PI/2));
+    // Every span ends at one shared post; only the first needs a left post.
+    const fenceSpan=fence.getObjectByName('Fence');
+    const leftPost=fence.getObjectByName('Left post');
+    const rightPost=fence.getObjectByName('Right post');
+    if (fenceSpan && leftPost && rightPost) {
+      const addFence=(x,z,count,rotation=0)=>{
+        const run=new THREE.Group();run.position.set(x,0,z);run.rotation.y=rotation;
+        const firstPost=leftPost.clone();firstPost.position.x-=(count-1);run.add(firstPost);
+        for(let i=0;i<count;i++){
+          const offset=(i-(count-1)/2)*2;
+          const span=fenceSpan.clone();span.position.x+=offset;run.add(span);
+          const post=rightPost.clone();post.position.x+=offset;run.add(post);
+        }
+        this.group.add(run);
+      };
+      addFence(-5,-11,3);addFence(5,11,3);addFence(-11,2,3,Math.PI/2);addFence(11,-3,2,Math.PI/2);
+    }
+    [[-10,-9],[-5,-10],[1,-10],[8,-9],[-10,-3],[10,-3],[-10,4],[10,4],[-10,10],[-4,10],[3,10],[9,10],[-5,1],[6,2]].forEach(([x,z],i)=>place(trees[i%trees.length],x,z,2.1, (i%4)*Math.PI/2));
     [[-7,-6],[-4,-6],[3,-7],[6,-7],[-7,5],[-4,5],[4,6],[7,6],[0,-5]].forEach(([x,z],i)=>place(grave,x,z,1.15,(i%2)*Math.PI));
     const pillars=[[-8,-1],[8,-1],[-3,8],[4,-8]];
     pillars.forEach(([x,z],i)=>{
@@ -94,6 +110,7 @@ export class Decorations {
   }
 
   update(now) {
+    foliageWind.value=now*0.001;
     const down=new THREE.Vector3(0,-1,0);
     for(const item of this.cameras) {
       const angle=item.baseAngle + Math.sin(now * 0.00045 + item.phase) * 0.7;

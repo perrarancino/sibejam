@@ -145,31 +145,36 @@ export class GraveyardMap {
 
   createGround() {
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 2048;
+    // Assemble small tiles into a seamless, pixel-sized atlas.
+    canvas.width = canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#2e222f';
+    ctx.fillStyle = '#211d2b';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(this.fieldSize / 32, this.fieldSize / 32);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.repeat.set(this.fieldSize / 8, this.fieldSize / 8);
     const image = new Image();
     image.onload = () => {
-      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      ctx.clearRect(0,0,128,128);
+      ctx.fillStyle = '#211d2b';
+      ctx.fillRect(0,0,128,128);
+      ctx.imageSmoothingEnabled = false;
+      // Keep each original 2×2 tile group intact; rotate whole groups only.
+      for (let y=0;y<2;y++) for(let x=0;x<2;x++) {
         ctx.save();
-        ctx.translate(x * 512 + 256, y * 512 + 256);
-        ctx.rotate(((x * 3 + y * 5 + x * y) % 4) * Math.PI / 2);
-        ctx.drawImage(image, -256, -256, 512, 512);
+        ctx.translate(x*64+32,y*64+32);
+        ctx.rotate(((x+y*2)%4)*Math.PI/2);
+        ctx.drawImage(image,0,0,64,64,-32,-32,64,64);
         ctx.restore();
       }
       texture.needsUpdate = true;
     };
-    image.src = './assets/mergedimage.png';
+    image.src = './assets/grass-sheet.png';
     const groundGeo = new THREE.BoxGeometry(this.fieldSize, 0.6, this.fieldSize);
-    const normalMap = new THREE.TextureLoader().load('./assets/ground-normal.png');
-    normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
-    normalMap.repeat.copy(texture.repeat);
-    const groundMat = new THREE.MeshStandardMaterial({map: texture, normalMap, normalScale: new THREE.Vector2(1.1, 1.1), emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 1, metalness: 0});
+    const groundMat = new THREE.MeshStandardMaterial({map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 1, metalness: 0});
     this.groundMesh = new THREE.Mesh(groundGeo, groundMat);
     this.groundMesh.position.y = -0.3;
     this.groundMesh.receiveShadow = true;

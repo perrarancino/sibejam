@@ -38,11 +38,15 @@ export class SceneManager {
 
   initLights() {
     // Мягкий ночной заполняющий свет (подчеркивает детали в тени)
-    this.ambientLight = new THREE.AmbientLight(0x282035, 0.45);
+    this.ambientLight = new THREE.AmbientLight(0x536a94, 0.38);
     this.scene.add(this.ambientLight);
 
+    // Холодный свет неба и мягкий отражённый свет от земли.
+    this.skyLight = new THREE.HemisphereLight(0x8daee8, 0x252736, 0.85);
+    this.scene.add(this.skyLight);
+
     // Холодный лунный свет (отбрасывает мягкие тени от персонажа и стен)
-    this.moonLight = new THREE.DirectionalLight(0x8faec7, 0.6);
+    this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.8);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
     this.moonLight.shadow.mapSize.width = 2048;
@@ -55,6 +59,8 @@ export class SceneManager {
     this.moonLight.shadow.camera.top = shadowD;
     this.moonLight.shadow.camera.bottom = -shadowD;
     this.moonLight.shadow.bias = -0.0005;
+    this.moonLight.shadow.normalBias = 0.025;
+    this.moonLight.shadow.radius = 2;
     this.scene.add(this.moonLight);
   }
 

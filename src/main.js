@@ -4,11 +4,11 @@
 import { GAME_DESIGN } from './config/index.js';
 import { gameState } from './state/gameState.js';
 import { input } from './core/input.js';
-import { SceneManager } from './core/scene.js';
-import { GraveyardMap } from './entities/map.js';
-import { Player } from './entities/player.js';
-import { Decorations } from './entities/decorations.js';
-import { FogMistManager } from './entities/fogMist.js';
+import { SceneManager } from './core/scene.js?v=tile-floor-1';
+import { GraveyardMap } from './entities/map.js?v=tile-arrange-1';
+import { Player } from './entities/player.js?v=shadow-arrow-1';
+import { Decorations } from './entities/decorations.js?v=church-3';
+import { FogMistManager } from './entities/fogMist.js?v=round-fog-1';
 import { hud } from './ui/hud.js';
 
 // Экспорт в window для удобной отладки в консоли браузера
