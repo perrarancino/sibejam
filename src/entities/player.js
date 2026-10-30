@@ -17,15 +17,20 @@ export class Player {
     this.targetRotation = 0;
 
     this.createModel();
-    this.group.position.set(0, 0, 4);
+    this.group.position.set(0, 0, 6);
   }
 
   createModel() {
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffe3a3, emissive: 0xffa63a, emissiveIntensity: 1.2, roughness: 0.6
-    });
-    this.bodyCube = new THREE.Mesh(new THREE.BoxGeometry(this.cubeSize, this.cubeSize, this.cubeSize), material);
-    this.bodyCube.position.y = this.cubeSize / 2;
+    this.characterTexture = new THREE.TextureLoader().load('./assets/character-sheet.png');
+    this.characterTexture.colorSpace = THREE.SRGBColorSpace;
+    this.characterTexture.magFilter = THREE.NearestFilter;
+    this.characterTexture.minFilter = THREE.NearestFilter;
+    this.characterTexture.generateMipmaps = false;
+    this.characterTexture.repeat.set(1 / 6, 1);
+    this.animationTime = 0;
+    this.spriteMaterial = new THREE.MeshStandardMaterial({map:this.characterTexture, alphaTest:0.1, side:THREE.DoubleSide, roughness:1, emissive:0xffffff, emissiveMap:this.characterTexture, emissiveIntensity:0.12});
+    this.bodyCube = new THREE.Mesh(new THREE.PlaneGeometry(0.78,1.55), this.spriteMaterial);
+    this.bodyCube.position.y = 0.775;
     this.group.add(this.bodyCube);
     const light = new THREE.PointLight(0xffc578, 18, 16, 1.3);
     light.position.y = this.cubeSize / 2;
@@ -34,7 +39,13 @@ export class Player {
 
   update(inputData, boundLimit, dt) {
     const { screenX, screenY, isMoving, isRunning } = inputData;
-    if (!isMoving) return;
+    if (!isMoving) {
+      this.animationTime = 0;
+      this.characterTexture.offset.x = 0;
+      return;
+    }
+    this.animationTime += dt;
+    this.characterTexture.offset.x = Math.floor(this.animationTime / 0.1) % 6 / 6;
     const len = Math.hypot(screenX, screenY);
     if (!len) return;
     const speed = isRunning ? HEROINE_CONFIG.runSpeed : HEROINE_CONFIG.walkSpeed;

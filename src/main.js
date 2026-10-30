@@ -7,6 +7,7 @@ import { input } from './core/input.js';
 import { SceneManager } from './core/scene.js';
 import { GraveyardMap } from './entities/map.js';
 import { Player } from './entities/player.js';
+import { Decorations } from './entities/decorations.js';
 import { FogMistManager } from './entities/fogMist.js';
 import { hud } from './ui/hud.js';
 
@@ -22,6 +23,7 @@ class Game {
     this.map = new GraveyardMap(this.sceneManager.scene);
     this.player = new Player(this.sceneManager.scene);
     this.fogMist = new FogMistManager(this.sceneManager.scene, 56);
+    this.decorations = new Decorations(this.sceneManager.scene, this.fogMist);
     this.hud = hud;
 
     // Кнопки зума (если присутствуют)
@@ -55,6 +57,7 @@ class Game {
 
     // Обновление анимаций карты (пульсация святыни)
     this.map.update(now);
+    this.decorations.update(now);
 
     // Обновление живой дымки и колышущегося тумана
     this.fogMist.update(this.player.getPosition(), dt, now);
@@ -64,9 +67,11 @@ class Game {
 
     // Следование камеры за Агатой
     this.sceneManager.updateCameraTracking(this.player.getPosition(), dt);
+    this.player.bodyCube.quaternion.copy(this.sceneManager.camera.quaternion);
 
     // Отрисовка кадра
     this.sceneManager.render();
+    this.fogMist.renderOverlay(this.sceneManager.renderer, this.sceneManager.camera);
 
     requestAnimationFrame(this.animate);
   }

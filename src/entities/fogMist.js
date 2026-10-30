@@ -11,6 +11,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 export class FogMistManager {
   constructor(scene, fieldSize = 36) {
     this.scene = scene;
+    this.cameraHeads = [];
     this.fieldSize = fieldSize;
     this.group = new THREE.Group();
     this.scene.add(this.group);
@@ -25,23 +26,26 @@ export class FogMistManager {
    * а дальше туман накатывает живыми волнообразными клубами.
    */
   createVolumetricGroundMist() {
+    // Full-screen fog layer: every screen pixel maps to the ground under it.
     const vertexShader = `
-      varying vec3 vWorldPosition;
-      varying vec2 vUv;
+      varying vec2 vScreenUv;
       void main() {
-        vUv = uv;
-        vec4 worldPos = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = worldPos.xyz;
-        gl_Position = projectionMatrix * viewMatrix * worldPos;
+        vScreenUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
       }
     `;
 
     const fragmentShader = `
-      varying vec3 vWorldPosition;
-      varying vec2 vUv;
+      varying vec2 vScreenUv;
+      uniform mat4 uInverseProjection;
+      uniform mat4 uCameraWorld;
       uniform vec3 uPlayerPos;
       uniform float uTime;
       uniform float uLanternRadius;
+      uniform vec4 uCameraLights[3];
+      uniform int uCameraLightCount;
+      uniform vec2 uCameraScreen[3];
+      uniform float uScreenAspect;
 
       // 2D Шум Simplex для клубящегося тумана
       vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -73,7 +77,14 @@ export class FogMistManager {
       }
 
       void main() {
-        vec2 worldXZ = vWorldPosition.xz;
+        vec2 ndc = vScreenUv * 2.0 - 1.0;
+        vec4 nearPoint = uCameraWorld * uInverseProjection * vec4(ndc, -1.0, 1.0);
+        vec4 farPoint = uCameraWorld * uInverseProjection * vec4(ndc, 1.0, 1.0);
+        vec3 rayStart = nearPoint.xyz / nearPoint.w;
+        vec3 rayEnd = farPoint.xyz / farPoint.w;
+        vec3 ray = rayEnd - rayStart;
+        float hit = -rayStart.y / min(ray.y, -0.00001);
+        vec2 worldXZ = (rayStart + ray * hit).xz;
         float dist = distance(worldXZ, uPlayerPos.xz);
 
         // Слоистые вытянутые потоки и мягкая, неровная граница видимости.
@@ -81,36 +92,62 @@ export class FogMistManager {
         float warp = snoise(flow * 0.75 + vec2(uTime * 0.025, -uTime * 0.018));
         float ribbons = snoise(flow + vec2(warp * 0.55 + uTime * 0.035, -uTime * 0.02));
         float fine = snoise(flow * 1.9 + vec2(-uTime * 0.018, uTime * 0.027));
-        float veil = smoothstep(1.7, 9.0, dist + ribbons * 0.38 + warp * 0.18);
-        float opaqueFog = smoothstep(7.5, 13.5, dist);
+        float veil = smoothstep(3.0, 11.0, dist + ribbons * 0.38 + warp * 0.18);
+        float opaqueFog = smoothstep(9.5, 16.0, dist);
         float variation = clamp(0.9 + ribbons * 0.07 + fine * 0.035, 0.62, 1.0);
         vec3 fogColor = mix(vec3(0.035, 0.055, 0.047), vec3(0.10, 0.14, 0.115), clamp(0.5 + 0.25 * ribbons, 0.0, 1.0));
         float alpha = mix(clamp(veil * 0.82 * variation, 0.0, 0.82), 1.0, opaqueFog);
+        for (int i = 0; i < 3; i++) {
+          if (i >= uCameraLightCount) break;
+          vec4 beam = uCameraLights[i];
+          vec2 start = beam.xy;
+          vec2 end = beam.zw;
+          vec2 direction = end - start;
+          float along = clamp(dot(worldXZ - start, direction) / max(dot(direction,direction), 0.001), 0.0, 1.0);
+          float distanceToBeam = distance(worldXZ, mix(start, end, along));
+          float pool = 1.0 - smoothstep(0.35, 2.3, distance(worldXZ, end));
+          float shaft = (1.0 - smoothstep(0.25, 1.4, distanceToBeam)) * (1.0 - smoothstep(0.65, 1.0, along));
+          float illumination = max(pool, shaft * 0.4);
+          alpha *= 1.0 - illumination * 0.9;
+        }
+        // Camera beacons remain visible through the screen-space fog.
+        for (int i = 0; i < 3; i++) {
+          if (i >= uCameraLightCount) break;
+          vec2 delta = (vScreenUv - uCameraScreen[i]) * vec2(uScreenAspect, 1.0);
+          float beacon = 1.0 - smoothstep(0.008, 0.035, length(delta));
+          alpha *= 1.0 - beacon * 0.9;
+        }
         gl_FragColor = vec4(fogColor, alpha);
       }
     `;
 
     this.groundMistUniforms = {
       uPlayerPos: { value: new THREE.Vector3(0, 0, 4) },
+      uInverseProjection: { value: new THREE.Matrix4() },
+      uCameraWorld: { value: new THREE.Matrix4() },
       uTime: { value: 0 },
-      uLanternRadius: { value: 6.8 }
+      uLanternRadius: { value: 6.8 },
+      uCameraLights: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+      uCameraLightCount: { value: 0 },
+      uCameraScreen: { value: [new THREE.Vector2(-10,-10), new THREE.Vector2(-10,-10), new THREE.Vector2(-10,-10)] },
+      uScreenAspect: { value: 1 }
     };
 
-    const mistGeo = new THREE.PlaneGeometry(this.fieldSize, this.fieldSize, 64, 64);
+    const mistGeo = new THREE.PlaneGeometry(2, 2);
     const mistMat = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       uniforms: this.groundMistUniforms,
       transparent: true,
       depthWrite: false,
+      depthTest: false,
       blending: THREE.NormalBlending
     });
 
     this.groundMistMesh = new THREE.Mesh(mistGeo, mistMat);
-    this.groundMistMesh.rotation.x = -Math.PI / 2;
-    this.groundMistMesh.position.y = 0.06;
-    this.groundMistMesh.renderOrder = 3;
-    this.group.add(this.groundMistMesh);
+    this.overlayScene = new THREE.Scene();
+    this.overlayCamera = new THREE.Camera();
+    this.overlayScene.add(this.groundMistMesh);
   }
 
   /**
@@ -174,6 +211,32 @@ export class FogMistManager {
         size
       });
     }
+  }
+
+  renderOverlay(renderer, camera) {
+    const size = renderer.getSize(new THREE.Vector2());
+    this.groundMistUniforms.uScreenAspect.value = size.x / size.y;
+    for (let i = 0; i < this.groundMistUniforms.uCameraLightCount.value; i++) {
+      const point = this.cameraHeads?.[i];
+      if (point) {
+        const projected = point.clone().project(camera);
+        this.groundMistUniforms.uCameraScreen.value[i].set(projected.x * 0.5 + 0.5, projected.y * 0.5 + 0.5);
+      }
+    }
+    this.groundMistUniforms.uInverseProjection.value.copy(camera.projectionMatrixInverse);
+    this.groundMistUniforms.uCameraWorld.value.copy(camera.matrixWorld);
+    const autoClear = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.render(this.overlayScene, this.overlayCamera);
+    renderer.autoClear = autoClear;
+  }
+
+  addCameraLight(x, z, targetX, targetZ) {
+    const count = this.groundMistUniforms.uCameraLightCount.value;
+    if (count >= 3) return;
+    this.groundMistUniforms.uCameraLights.value[count].set(x, z, targetX, targetZ);
+    this.groundMistUniforms.uCameraLightCount.value = count + 1;
+    return count;
   }
 
   update(playerPos, dt, now) {
