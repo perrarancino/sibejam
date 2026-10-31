@@ -7,9 +7,10 @@ import { input } from './core/input.js';
 import { SceneManager } from './core/scene.js?v=darker-night-1';
 import { GraveyardMap } from './entities/map.js?v=flashlight-layers-1';
 import { Player } from './entities/player.js?v=soft-flashlight-1';
-import { Decorations } from './entities/decorations.js?v=candles-places-1';
-import { FogMistManager } from './entities/fogMist.js?v=round-fog-1';
+import { Decorations } from './entities/decorations.js?v=cave-light-rays-3';
+import { FogMistManager } from './entities/fogMist.js?v=camera-editor-1';
 import { hud } from './ui/hud.js';
+import { MapEditor } from './entities/mapEditor.js?v=purple-caves-1';
 
 // Экспорт в window для удобной отладки в консоли браузера
 window.GAME_DESIGN = GAME_DESIGN;
@@ -25,6 +26,8 @@ class Game {
     this.fogMist = new FogMistManager(this.sceneManager.scene, 56);
     this.decorations = new Decorations(this.sceneManager.scene, this.fogMist);
     this.hud = hud;
+    this.input = input;
+    this.editor = new MapEditor(this);
 
     // Кнопки зума (если присутствуют)
     document.querySelector('#btn-zoom-in')?.addEventListener('click', () => {
@@ -53,7 +56,8 @@ class Game {
     gameState.update({ isRunning: inputData.isRunning });
 
     // Обновление состояния персонажа
-    this.player.update(inputData, this.boundLimit, dt, this.decorations);
+    if (this.editor.active) this.editor.update(dt, inputData);
+    else this.player.update(inputData, this.boundLimit, dt, this.decorations);
 
     // Обновление анимаций карты (пульсация святыни)
     this.map.update(now);
@@ -66,13 +70,13 @@ class Game {
     this.hud.updateMovementStatus(inputData.isMoving, inputData.isRunning);
 
     // Следование камеры за Агатой
-    this.sceneManager.updateCameraTracking(this.player.getPosition(), dt);
+    this.sceneManager.updateCameraTracking(this.editor.active ? this.editor.focus : this.player.getPosition(), dt);
     this.player.bodyCube.quaternion.copy(this.sceneManager.camera.quaternion);
     this.player.updateFlashlight(this.sceneManager.camera);
 
     // Отрисовка кадра
     this.sceneManager.render();
-    this.fogMist.renderOverlay(this.sceneManager.renderer, this.sceneManager.camera);
+    if (!this.editor.active) this.fogMist.renderOverlay(this.sceneManager.renderer, this.sceneManager.camera);
 
     requestAnimationFrame(this.animate);
   }

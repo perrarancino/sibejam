@@ -112,18 +112,27 @@ export class Decorations {
     this.cameras=[];
     this.candleFlames=[];
     this.candleLights=[];
+    this.jackLights=[];
     this.candleTime={value:0};
     this.colliders=[];
+    this.editable=[];
+    this.typeCounts={};
+    this.modelTypes=new Map();
+    this.grassMesh=null;
+    this.paintedGrass=null;
     this.lastGrassStep=null;
     this.grassStepIndex=0;
     this.group=new THREE.Group();
     scene.add(this.group);
-    this.load().catch(error=>console.error('Ошибка загрузки декораций:',error));
+    this.ready=this.load().catch(error=>{console.error('Ошибка загрузки декораций:',error);throw error;});
   }
   async load() {
-    const [broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles]=await Promise.all(['new-tree-broadleaf','new-tree-pine','new-tree-tall','new-tree-bare','pillar','camera','church','fence','grass','bush','pumpkin','candles'].map(loadModel));
+    const [broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles,lamppost,jack,stoneFence,cave]=await Promise.all(['new-tree-broadleaf','new-tree-pine','new-tree-tall','new-tree-bare','pillar','camera','church','fence','grass','bush','pumpkin','candles','lamppost','jack','stone-fence','cave'].map(loadModel));
     const trees=[broadleaf,pine,tall,bare];
-    const place=(model,x,z,scale,rotation=0)=>{const item=model.clone();item.position.set(x,0,z);item.scale.setScalar(scale);item.rotation.y=rotation;this.group.add(item);return item;};
+    this.cameraTemplate=camera;
+    const models={broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles,lamppost,jack,stoneFence,cave};
+    this.modelTypes=new Map(Object.entries(models).map(([type,model])=>[model,type]));
+    const place=(model,x,z,scale,rotation=0)=>{const item=model.clone();item.position.set(x,0,z);item.scale.setScalar(scale);item.rotation.y=rotation;this.group.add(item);this.registerEditable(item,this.modelTypes.get(model));return item;};
     place(church,0,0,1.65,Math.PI);
     this.colliders.push({type:'box', x:0, z:0, halfX:1.96, halfZ:3.41});
     const circle = (x,z,r) => this.colliders.push({type:'circle',x,z,r});
@@ -171,13 +180,56 @@ export class Decorations {
           const post=rightPost.clone();post.position.x+=offset;run.add(post);
         }
         this.group.add(run);
+        this.registerEditable(run,'fence');
         this.colliders.push({type:'box',x,z,halfX:rotation ? 0.09 : count+0.03,halfZ:rotation ? count+0.03 : 0.09});
       };
       addFence(-5,-11,3);addFence(5,11,3);addFence(-11,2,3,Math.PI/2);addFence(11,-3,2,Math.PI/2);
     }
+    // Neighbouring stone spans share one post at every join.
+    const stoneWall=stoneFence.getObjectByName('Stone wall');
+    const stoneLeft=stoneFence.getObjectByName('Left stone post');
+    const stoneRight=stoneFence.getObjectByName('Right stone post');
+    if(stoneWall && stoneLeft && stoneRight) {
+      const span=26/16;
+      const addStoneFence=(x,z,count,rotation=0)=>{
+        const run=new THREE.Group();run.position.set(x,0,z);run.rotation.y=rotation;
+        const first=stoneLeft.clone();first.position.x-=(count-1)*span/2;run.add(first);
+        for(let i=0;i<count;i++) {
+          const offset=(i-(count-1)/2)*span;
+          const wall=stoneWall.clone();wall.position.x+=offset;run.add(wall);
+          const post=stoneRight.clone();post.position.x+=offset;run.add(post);
+        }
+        this.group.add(run);
+        this.registerEditable(run,'stoneFence');
+        const halfLength=count*span/2+0.125;
+        this.colliders.push({type:'box',x,z,halfX:rotation ? 0.125 : halfLength,halfZ:rotation ? halfLength : 0.125});
+      };
+      addStoneFence(-7.3,-7.8,2);
+      addStoneFence(7.4,4.8,2);
+      addStoneFence(-7.5,3,2,Math.PI/2);
+    }
     [[-10,-9],[-5,-10],[1,-10],[8,-9],[-10,-3],[10,-3],[-10,4],[10,4],[-10,10],[-4,10],[3,10],[9,10],[-5,1],[6,2]].forEach(([x,z],i)=>{place(trees[i%trees.length],x,z,2.1, (i%4)*Math.PI/2);circle(x,z,[0.18,0.16,0.16,0.20][i%4]);});
     const pillars=[[-8,-1],[8,-1],[-3,8],[4,-8]];
     pillars.forEach(([x,z])=>this.colliders.push({type:'box',x,z,halfX:0.5,halfZ:0.5}));
+    // A few warm pools of light mark paths without blocking them.
+    const glass = lamppost.getObjectByName('Warm lantern panes');
+    if (glass) {
+      glass.material = glass.material.clone();
+      glass.material.emissive.setHex(0xffc889);
+      glass.material.emissiveIntensity = 0.75;
+    }
+    [[-4.7,6.8],[4.7,6.8],[-6.2,-4],[6.5,-2]].forEach(([x,z],i)=>{
+      const lamp = place(lamppost,x,z,1.0,(i%4)*Math.PI/2);
+      const glow = new THREE.PointLight(0xffc483,12,7.5,2);
+      glow.position.set(0,1.84,0);
+      lamp.add(glow);
+      circle(x,z,0.18);
+    });
+    [[-8,-4.5],[8,-5.5]].forEach(([x,z],i)=>{
+      const grotto=place(cave,x,z,1.15,i?Math.PI/2:0);
+      this.decorateCave(grotto);
+      this.colliders.push({type:'box',x,z,halfX:i?0.68:1.08,halfZ:i?1.08:0.68});
+    });
     // Stable seeded layout: geometry is instanced once; wind and proximity run on the GPU.
     let seed=74321;
     const random=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
@@ -185,6 +237,19 @@ export class Decorations {
     const bushes=[[-8,-7],[-6,-3],[7,-5],[9,1],[-8,7],[-2,9],[6,8],[8,5],[-9,1],[3,-10],[5,4],[-5,3]];
     bushes.forEach(([x,z],i)=>{if(clear(x,z,0.5)){place(bush,x,z,1.3,(i%4)*Math.PI/2);}});
     [[-6,7],[6,-4],[-3,-8],[8,8],[2,8],[-9,-5]].forEach(([x,z],i)=>{if(clear(x,z,0.45)){place(pumpkin,x,z,0.65,(i%4)*Math.PI/2);circle(x,z,0.35);}});
+    // The glowing core is enclosed by the pumpkin mesh and shows through its carving.
+    const jackCoreGeometry = new THREE.SphereGeometry(0.24, 12, 8);
+    const jackCoreMaterial = new THREE.MeshBasicMaterial({color:0xffae35});
+    [[-1.8,7.6],[2.0,5.3],[-6.5,-2.2],[7.6,7.4]].forEach(([x,z],i)=>{
+      if(!clear(x,z,0.45)) return;
+      const lantern=place(jack,x,z,0.7,(i%2)*Math.PI/2);
+      const core=new THREE.Mesh(jackCoreGeometry,jackCoreMaterial);
+      core.position.set(0,0.33,0);lantern.add(core);
+      const light=new THREE.PointLight(0xff8a27,1.4,2.8,1.7);
+      light.position.set(0,0.34,0);lantern.add(light);
+      this.jackLights.push({light,phase:i*1.9});
+      circle(x,z,0.4);
+    });
     const grassPart=grass.children[0];
     if(grassPart) {
       const matrices=[];
@@ -205,12 +270,94 @@ export class Decorations {
       matrices.forEach((matrix,i)=>tufts.setMatrixAt(i,matrix));
       tufts.instanceMatrix.needsUpdate=true; tufts.receiveShadow=true;
       this.group.add(tufts);
+      this.grassMesh=tufts;
+      // Painted tufts share one draw call and remain individually editable.
+      this.paintedGrass=new THREE.InstancedMesh(grassPart.geometry,grassPart.material,4000);
+      this.paintedGrass.count=0;this.paintedGrass.frustumCulled=false;this.paintedGrass.receiveShadow=true;
+      this.group.add(this.paintedGrass);
     }
     pillars.forEach(([x,z],i)=>{
       const post=place(pillar,x,z,1.0);
       if(i===2)return;
+      this.editable.find(entry=>entry.object===post).type='cameraPillar';
+      this.attachCamera(post,i);
+    });
+    // Bind each physical footprint to its scene object so edits update collisions.
+    for(const collider of this.colliders) {
+      const entry=this.editable.find(e=>Math.abs(e.object.position.x-collider.x)<0.001 && Math.abs(e.object.position.z-collider.z)<0.001);
+      if(entry) { entry.collider=collider; entry.colliderBase={...collider,scale:entry.object.scale.x,rotation:entry.object.rotation.y}; }
+    }
+    try {
+      const response=await fetch('./assets/map.json', {cache:'no-store'});
+      if(response.ok) {const data=await response.json();if(!data.default) this.applyMap(data);}
+    } catch(error) { console.warn('Не удалось загрузить карту:',error); }
+  }
+
+  decorateCave(root) {
+    // Trace the inner rim of the entrance from the model, rather than a
+    // rectangular plane which can show through the cracks around the cave.
+    const rim=[[-4.5,0],[-3.9,1.8],[-3.1,4.2],[-2.4,6.3],[-1.5,9],[-0.7,11.4],[0,13.5],[1,10.5],[2,7.5],[3.2,3.9],[4.5,0]];
+    const opening=new THREE.Shape();
+    rim.forEach(([x,y],i)=>{if(i===0)opening.moveTo(x/16,y/16);else opening.lineTo(x/16,y/16);});opening.closePath();
+    const glowMaterial=new THREE.ShaderMaterial({
+      uniforms:{uTime:this.candleTime},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`uniform float uTime;varying vec2 vUv;void main(){float flicker=0.94+0.06*sin(uTime*1.5);float height=clamp(vUv.y/0.85,0.0,1.0);vec3 color=mix(vec3(0.68,0.30,0.98),vec3(0.35,0.10,0.65),height);gl_FragColor=vec4(color*flicker,1.0);}`,
+      transparent:true,depthWrite:false,side:THREE.DoubleSide
+    });
+    const core=new THREE.Mesh(new THREE.ShapeGeometry(opening),glowMaterial);
+    core.position.z=0.40;core.scale.set(0.9,0.92,1);core.renderOrder=2;root.add(core);
+    // A few soft, tapered light shafts spread out from the entrance.
+    const rayMaterial=new THREE.ShaderMaterial({
+      uniforms:{uTime:this.candleTime},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`
+        uniform float uTime;varying vec2 vUv;
+        void main(){
+          float distanceFromDoor=1.0-vUv.y;
+          float angle=(vUv.x-0.5)/max(distanceFromDoor,0.035);
+          float rays=0.0;
+          float sway=sin(uTime*0.35)*0.055;
+          float first=smoothstep(-0.7,0.35,sin(uTime*0.65));
+          float second=smoothstep(-0.7,0.35,sin(uTime*0.65+2.2));
+          float third=smoothstep(-0.6,0.45,sin(uTime*0.48+4.0));
+          rays+=(1.0-smoothstep(0.02,0.12,abs(angle+0.25-sway)))*first;
+          rays+=(1.0-smoothstep(0.02,0.11,abs(angle-0.24+sway)))*second;
+          rays+=(1.0-smoothstep(0.02,0.10,abs(angle-0.02-sway*0.6)))*third;
+          float fade=smoothstep(0.01,0.13,distanceFromDoor)*(1.0-smoothstep(0.45,1.0,distanceFromDoor));
+          gl_FragColor=vec4(0.62,0.36,0.94,clamp(rays*fade*0.26,0.0,0.32));
+        }`,
+      transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-1
+    });
+    const rays=new THREE.Mesh(new THREE.PlaneGeometry(3.4,4.0),rayMaterial);
+    rays.rotation.x=-Math.PI/2;rays.position.set(0,0.045,2.56);rays.renderOrder=2;root.add(rays);
+    // These spotlights illuminate nearby geometry as the visible shafts move.
+    for(let i=0;i<2;i++){
+      const light=new THREE.SpotLight(0xaa76f0,3.5,5.5,0.32,0.85,1.7);
+      light.name=`caveRayLight${i}`;light.position.set(0,0.55,0.38);
+      const target=new THREE.Object3D();target.name=`caveRayTarget${i}`;target.position.set(i?0.8:-0.8,0,2.6);
+      root.add(light,target);light.target=target;
+      const shaftGeometry=new THREE.PlaneGeometry(0.38,3.0);shaftGeometry.translate(0,1.5,0);
+      const shaftMaterial=new THREE.ShaderMaterial({
+        uniforms:{uTime:this.candleTime,uPhase:{value:i*2.2}},
+        vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+        fragmentShader:`uniform float uTime;uniform float uPhase;varying vec2 vUv;void main(){
+          float edge=1.0-smoothstep(0.1,0.5,abs(vUv.x-0.5));
+          float fade=smoothstep(0.0,0.13,vUv.y)*(1.0-smoothstep(0.35,1.0,vUv.y));
+          float pulse=smoothstep(-0.7,0.35,sin(uTime*0.65+uPhase));
+          gl_FragColor=vec4(0.63,0.39,0.95,edge*fade*pulse*0.22);
+        }`,
+        transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+      });
+      const shaft=new THREE.Mesh(shaftGeometry,shaftMaterial);shaft.name=`caveRayShaft${i}`;
+      shaft.rotation.order='YXZ';shaft.position.copy(light.position);shaft.renderOrder=3;root.add(shaft);
+    }
+
+  }
+
+  attachCamera(post,i=this.cameras.length) {
       const pivot=new THREE.Group();pivot.position.set(0,2.05,0);post.add(pivot);
-      const lamp=camera.clone();lamp.scale.setScalar(0.5);pivot.add(lamp);
+      const lamp=this.cameraTemplate.clone();lamp.scale.setScalar(0.5);pivot.add(lamp);
       const light=new THREE.SpotLight(0xc9eab8,34,12,0.48,0.8,1.5);
       this.group.add(light,light.target);
       const geometry=new THREE.ConeGeometry(1.5,1,20,1,true);
@@ -228,13 +375,159 @@ export class Decorations {
       const pool=new THREE.Mesh(new THREE.PlaneGeometry(4.6,4.6),poolMat);pool.rotation.x=-Math.PI/2;pool.renderOrder=4;this.group.add(pool);
       const beacon=new THREE.Sprite(new THREE.SpriteMaterial({map:beaconTexture,color:0xc6ffc1,transparent:true,opacity:0.55,depthTest:true,depthWrite:false,blending:THREE.AdditiveBlending}));
       beacon.scale.set(1.4,1.4,1);beacon.renderOrder=-1;this.group.add(beacon);
-      const fogIndex=this.fog.addCameraLight(x,z,x+2,z+2);
+      const fogIndex=this.fog.addCameraLight(post.position.x,post.position.z,post.position.x+2,post.position.z+2);
       this.cameras.push({pivot,lamp,light,beam,pool,beacon,fogIndex,baseAngle:i*Math.PI*.7,phase:i*1.7});
+  }
+
+  registerEditable(object,type,id) {
+    const index=this.typeCounts[type]||0;
+    if(!id) this.typeCounts[type]=index+1;
+    const entry={id:id||`${type}-${index}`,type,object,base:true};
+    object.userData.editorId=entry.id;
+    this.editable.push(entry);
+    return entry;
+  }
+
+  syncCollider(entry) {
+    if(!entry.collider) return;
+    const c=entry.collider,b=entry.colliderBase,o=entry.object;
+    c.disabled=!o.visible;c.x=o.position.x;c.z=o.position.z;
+    const scale=o.scale.x/b.scale;
+    if(c.type==='circle') c.r=b.r*scale;
+    else {
+      const swapped=Math.abs(Math.sin(o.rotation.y-b.rotation))>0.707;
+      c.halfX=(swapped?b.halfZ:b.halfX)*scale;
+      c.halfZ=(swapped?b.halfX:b.halfZ)*scale;
+    }
+  }
+
+  snapshot() {
+    const round=n=>Math.round(n*1000)/1000;
+    const objects=this.editable.filter(e=>e.object.visible).map(e=>({id:e.id,type:e.type,x:round(e.object.position.x),z:round(e.object.position.z),rotation:round(e.object.rotation.y),scale:round(e.object.scale.x),...(e.joinStart?{joinStart:true}:{}),...(e.joinEnd?{joinEnd:true}:{})}));
+    const grass=[];
+    if(this.grassMesh) {
+      const matrix=new THREE.Matrix4(), pos=new THREE.Vector3(),q=new THREE.Quaternion(),scale=new THREE.Vector3(),euler=new THREE.Euler();
+      for(let i=0;i<this.grassMesh.count;i++) {
+        this.grassMesh.getMatrixAt(i,matrix);matrix.decompose(pos,q,scale);euler.setFromQuaternion(q);
+        if(scale.x>0.001) grass.push({id:i,x:round(pos.x),z:round(pos.z),rotation:round(euler.y),scale:round(scale.x)});
+      }
+    }
+    const paintedGrass=[];
+    if(this.paintedGrass) {
+      const matrix=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),scale=new THREE.Vector3(),euler=new THREE.Euler();
+      for(let i=0;i<this.paintedGrass.count;i++) {
+        this.paintedGrass.getMatrixAt(i,matrix);matrix.decompose(pos,q,scale);euler.setFromQuaternion(q);
+        if(scale.x>0.001) paintedGrass.push({id:i,x:round(pos.x),z:round(pos.z),rotation:round(euler.y),scale:round(scale.x)});
+      }
+    }
+    return {version:1,objects,grass,paintedGrass};
+  }
+
+  setGrass(index,data,painted=false) {
+    const matrix=new THREE.Matrix4(),scale=Math.max(0,data.scale);
+    matrix.compose(new THREE.Vector3(data.x,0,data.z),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),data.rotation),new THREE.Vector3(scale,scale,scale));
+    const mesh=painted ? this.paintedGrass : this.grassMesh;
+    mesh.setMatrixAt(index,matrix);mesh.instanceMatrix.needsUpdate=true;mesh.boundingSphere=null;
+  }
+
+  paintGrass(x,z) {
+    const mesh=this.paintedGrass;if(!mesh || mesh.count>=mesh.instanceMatrix.count) return false;
+    const index=mesh.count++;
+    this.setGrass(index,{x,z,rotation:Math.random()*Math.PI*2,scale:0.65+Math.random()*0.7},true);
+    return true;
+  }
+
+  addFenceSection(type,id,joinStart=false,joinEnd=false) {
+    const modelType=type==='stoneFenceSection'?'stoneFence':'fence';
+    const model=[...this.modelTypes.entries()].find(([,name])=>name===modelType)?.[0];
+    if(!model) return null;
+    const object=model.clone(true);this.group.add(object);
+    const entry=this.registerEditable(object,type,id||`extra-${crypto.randomUUID()}`);entry.base=false;
+    this.setFenceJoin(entry,joinStart,joinEnd);
+    const stone=type==='stoneFenceSection';
+    entry.collider={type:'box',x:0,z:0,halfX:stone?0.94:1.03,halfZ:stone?0.125:0.09};
+    entry.colliderBase={...entry.collider,scale:1,rotation:0};this.colliders.push(entry.collider);
+    this.syncCollider(entry);return entry;
+  }
+
+  setFenceJoin(entry,joined,joinedEnd=false) {
+    entry.joinStart=!!joined;entry.joinEnd=!!joinedEnd;
+    const stone=entry.type==='stoneFenceSection';
+    const left=entry.object.getObjectByName(stone?'Left stone post':'Left post');
+    const right=entry.object.getObjectByName(stone?'Right stone post':'Right post');
+    if(left) left.visible=!entry.joinStart;
+    if(right) right.visible=!entry.joinEnd;
+  }
+
+  addEditable(type,id,joinStart=false,joinEnd=false) {
+    if(type==='fenceSection'||type==='stoneFenceSection') return this.addFenceSection(type,id,joinStart,joinEnd);
+    const source=(type==='pillar' ? this.editable.find(e=>e.type==='pillar' && e.base && !this.cameras.some(c=>c.pivot.parent===e.object)) : null) || this.editable.find(e=>e.type===type && e.base);
+    const modelType=type==='cameraPillar'?'pillar':type==='grass'?'grass':null;
+    const rawModel=modelType ? [...this.modelTypes.entries()].find(([,name])=>name===modelType)?.[0] : null;
+    if(!source && !rawModel) return null;
+    const object=(rawModel||source.object).clone(true);
+    object.visible=true;
+    this.group.add(object);
+    const entry=this.registerEditable(object,type,id||`extra-${crypto.randomUUID()}`);entry.base=false;
+    if(type==='cameraPillar') {
+      entry.collider={type:'box',x:0,z:0,halfX:0.5,halfZ:0.5};
+      entry.colliderBase={...entry.collider,scale:1,rotation:0};this.colliders.push(entry.collider);
+      this.attachCamera(object);
+    } else if(source?.colliderBase) {
+      entry.colliderBase={...source.colliderBase};entry.collider={...source.collider};this.colliders.push(entry.collider);
+    }
+    object.traverse(node=>{
+      if(node.isMesh && node.material?.uniforms?.uTime===this.candleTime) this.candleFlames.push(node);
     });
+    this.syncCollider(entry);return entry;
+  }
+
+  applyMap(data) {
+    if(data?.version!==1 || !Array.isArray(data.objects) || !Array.isArray(data.grass) || data.objects.length>5000 || data.grass.length>10000) throw new Error('Неверный формат карты');
+    const validTransform=e=>e && Number.isFinite(e.x) && Number.isFinite(e.z) && Number.isFinite(e.rotation) && Number.isFinite(e.scale) && e.scale>0 && e.scale<=10 && Math.abs(e.x)<=100 && Math.abs(e.z)<=100;
+    const ids=new Set(), grassIds=new Set();
+    for(const e of data.objects) {
+      if(!validTransform(e) || typeof e.id!=='string' || typeof e.type!=='string' || ids.has(e.id)) throw new Error('Некорректные объекты в карте');
+      ids.add(e.id);
+    }
+    for(const e of data.grass) {
+      if(!validTransform(e) || !Number.isInteger(e.id) || e.id<0 || e.id>=this.grassMesh.count || grassIds.has(e.id)) throw new Error('Некорректная трава в карте');
+      grassIds.add(e.id);
+    }
+    const saved=new Map(data.objects.map(e=>[e.id,e]));
+    for(const entry of this.editable) {
+      const value=saved.get(entry.id);
+      entry.object.visible=!!value;
+      if(value) {
+        if(entry.type==='fenceSection'||entry.type==='stoneFenceSection') this.setFenceJoin(entry,value.joinStart,value.joinEnd);
+        entry.object.position.set(value.x,0,value.z);entry.object.rotation.y=value.rotation;entry.object.scale.setScalar(value.scale);
+        saved.delete(entry.id);
+      }
+      this.syncCollider(entry);
+    }
+    for(const value of saved.values()) {
+      const entry=this.addEditable(value.type,value.id,value.joinStart,value.joinEnd);if(!entry) continue;
+      entry.object.position.set(value.x,0,value.z);entry.object.rotation.y=value.rotation;entry.object.scale.setScalar(value.scale);this.syncCollider(entry);
+    }
+    const painted=Array.isArray(data.paintedGrass)?data.paintedGrass:[];
+    if(painted.length>this.paintedGrass.instanceMatrix.count) throw new Error('Слишком много нарисованной травы');
+    const paintedIds=new Set();
+    for(const e of painted) {
+      if(!validTransform(e)||!Number.isInteger(e.id)||e.id<0||e.id>=this.paintedGrass.instanceMatrix.count||paintedIds.has(e.id)) throw new Error('Некорректная нарисованная трава');
+      paintedIds.add(e.id);
+    }
+    this.paintedGrass.count=painted.length ? Math.max(...painted.map(e=>e.id))+1 : 0;
+    const byId=new Map(painted.map(e=>[e.id,e]));
+    for(let i=0;i<this.paintedGrass.count;i++) this.setGrass(i,byId.get(i)||{x:0,z:0,rotation:0,scale:0},true);
+    if(this.grassMesh) {
+      const grass=new Map(data.grass.map(e=>[e.id,e]));
+      for(let i=0;i<this.grassMesh.count;i++) this.setGrass(i,grass.get(i)||{x:0,z:0,rotation:0,scale:0});
+    }
   }
 
   isBlocked(x,z,radius) {
     return this.colliders.some(c => {
+      if(c.disabled) return false;
       if(c.type==='circle') return Math.hypot(x-c.x,z-c.z)<radius+c.r;
       const dx=Math.max(Math.abs(x-c.x)-c.halfX,0), dz=Math.max(Math.abs(z-c.z)-c.halfZ,0);
       return dx*dx+dz*dz<radius*radius;
@@ -244,6 +537,25 @@ export class Decorations {
   update(now, playerPosition, camera) {
     foliageWind.value=now*0.001;
     this.candleTime.value=now*0.001;
+    const caveTime=now*0.001;
+    for(const entry of this.editable){
+      if(entry.type!=='cave'||!entry.object.visible)continue;
+      for(let i=0;i<2;i++){
+        const light=entry.object.getObjectByName(`caveRayLight${i}`);
+        const target=entry.object.getObjectByName(`caveRayTarget${i}`);
+        if(!light||!target)continue;
+        // Rebind the target on cloned caves as well as original ones.
+        light.target=target;
+        const phase=i*2.2,sine=Math.sin(caveTime*0.65+phase);
+        const t=THREE.MathUtils.clamp((sine+0.7)/1.05,0,1);
+        light.intensity=3.5*t*t*(3-2*t);
+        const yaw=(i?0.25:-0.25)+Math.sin(caveTime*0.35+i*Math.PI)*0.07;
+        const pitch=-0.15+Math.sin(caveTime*0.43+phase)*0.20;
+        target.position.set(Math.sin(yaw)*2.6,Math.max(0.03,0.55+Math.sin(pitch)*2.6),0.38+Math.cos(yaw)*2.6);
+        const shaft=entry.object.getObjectByName(`caveRayShaft${i}`);
+        if(shaft){shaft.rotation.y=yaw;shaft.rotation.x=Math.PI/2-pitch;}
+      }
+    }
     for(const flame of this.candleFlames) {
       if(camera) {
         // Flames are inside rotated sets, so convert the camera orientation to local space.
@@ -251,6 +563,7 @@ export class Decorations {
       }
     }
     for(const item of this.candleLights) item.light.intensity=1.25+0.17*Math.sin(now*0.008+item.phase)+0.08*Math.sin(now*0.017+item.phase);
+    for(const item of this.jackLights) item.light.intensity=1.4+0.18*Math.sin(now*0.006+item.phase)+0.08*Math.sin(now*0.014+item.phase);
     if(playerPosition) {
       foliagePlayer.value.copy(playerPosition);
       if(!this.lastGrassStep) this.lastGrassStep = playerPosition.clone();
@@ -262,13 +575,22 @@ export class Decorations {
     }
     const down=new THREE.Vector3(0,-1,0);
     for(const item of this.cameras) {
+      const visible=item.pivot.parent.visible;
+      item.light.visible=item.beam.visible=item.pool.visible=item.beacon.visible=visible;
+      if(!visible) {
+        if(item.fogIndex>=0){
+          this.fog.groundMistUniforms.uCameraLights.value[item.fogIndex].set(10000,10000,10000,10000);
+          this.fog.cameraHeads[item.fogIndex]=new THREE.Vector3(10000,0,10000);
+        }
+        continue;
+      }
       const angle=item.baseAngle + Math.sin(now * 0.00045 + item.phase) * 0.7;
       item.pivot.rotation.y=angle;
       item.lamp.updateWorldMatrix(true,false);
       // Centre of the lens face in the imported model, just outside its surface.
       const origin=item.lamp.localToWorld(new THREE.Vector3(0,24.3125/16,11.45/16));
       item.beacon.position.copy(origin).add(new THREE.Vector3(-Math.sin(angle)*0.28,0,-Math.cos(angle)*0.28));
-      this.fog.cameraHeads[item.fogIndex]=origin;
+      if(item.fogIndex>=0) this.fog.cameraHeads[item.fogIndex]=origin;
       const target=new THREE.Vector3(origin.x + Math.sin(angle)*3.2,0,origin.z + Math.cos(angle)*3.2);
       item.light.position.copy(origin);item.light.target.position.copy(target);
       item.pool.position.set(target.x,0.075,target.z);
@@ -276,7 +598,7 @@ export class Decorations {
       item.beam.position.copy(origin).add(target).multiplyScalar(0.5);
       item.beam.scale.y=length;
       item.beam.quaternion.setFromUnitVectors(down,offset.normalize());
-      this.fog.groundMistUniforms.uCameraLights.value[item.fogIndex].set(origin.x,origin.z,target.x,target.z);
+      if(item.fogIndex>=0) this.fog.groundMistUniforms.uCameraLights.value[item.fogIndex].set(origin.x,origin.z,target.x,target.z);
     }
   }
 }

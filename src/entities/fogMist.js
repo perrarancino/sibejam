@@ -42,9 +42,9 @@ export class FogMistManager {
       uniform vec3 uPlayerPos;
       uniform float uTime;
       uniform float uLanternRadius;
-      uniform vec4 uCameraLights[3];
+      uniform vec4 uCameraLights[16];
       uniform int uCameraLightCount;
-      uniform vec2 uCameraScreen[3];
+      uniform vec2 uCameraScreen[16];
       uniform float uScreenAspect;
 
       // 2D Шум Simplex для клубящегося тумана
@@ -97,7 +97,7 @@ export class FogMistManager {
         float variation = clamp(0.9 + cloud * 0.07 + fine * 0.035, 0.62, 1.0);
         vec3 fogColor = mix(vec3(0.045, 0.035, 0.06), vec3(0.12, 0.10, 0.145), clamp(0.5 + 0.25 * cloud, 0.0, 1.0));
         float alpha = mix(clamp(veil * 0.82 * variation, 0.0, 0.82), 1.0, opaqueFog);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 16; i++) {
           if (i >= uCameraLightCount) break;
           vec4 beam = uCameraLights[i];
           vec2 start = beam.xy;
@@ -111,7 +111,7 @@ export class FogMistManager {
           alpha *= 1.0 - illumination * 0.9;
         }
         // Camera beacons remain visible through the screen-space fog.
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 16; i++) {
           if (i >= uCameraLightCount) break;
           vec2 delta = (vScreenUv - uCameraScreen[i]) * vec2(uScreenAspect, 1.0);
           float beacon = 1.0 - smoothstep(0.008, 0.035, length(delta));
@@ -127,9 +127,9 @@ export class FogMistManager {
       uCameraWorld: { value: new THREE.Matrix4() },
       uTime: { value: 0 },
       uLanternRadius: { value: 6.8 },
-      uCameraLights: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+      uCameraLights: { value: Array.from({length:16},()=>new THREE.Vector4()) },
       uCameraLightCount: { value: 0 },
-      uCameraScreen: { value: [new THREE.Vector2(-10,-10), new THREE.Vector2(-10,-10), new THREE.Vector2(-10,-10)] },
+      uCameraScreen: { value: Array.from({length:16},()=>new THREE.Vector2(-10,-10)) },
       uScreenAspect: { value: 1 }
     };
 
@@ -233,7 +233,7 @@ export class FogMistManager {
 
   addCameraLight(x, z, targetX, targetZ) {
     const count = this.groundMistUniforms.uCameraLightCount.value;
-    if (count >= 3) return;
+    if (count >= 16) return -1;
     this.groundMistUniforms.uCameraLights.value[count].set(x, z, targetX, targetZ);
     this.groundMistUniforms.uCameraLightCount.value = count + 1;
     return count;
