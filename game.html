@@ -114,7 +114,7 @@
       const grainInterval = 1000 / 18; // 18 кадров в секунду (пленочный проектор)
 
       function loop(now) {
-        if (now - lastGrainTime >= grainInterval) {
+        if (!document.hidden && now - lastGrainTime >= grainInterval) {
           currentPatternIndex = (currentPatternIndex + 1) % numPatterns;
           ctx.fillStyle = patterns[currentPatternIndex];
           ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -127,6 +127,6 @@
   </script>
 
   <!-- Точка входа игры -->
-  <script type="module" src="./src/main.js?v=batch-settings-1"></script>
+  <script type="module" src="./src/main.js?v=cpu-static-1"></script>
 </body>
 </html>

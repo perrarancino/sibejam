@@ -4,11 +4,11 @@
 import { GAME_DESIGN } from './config/index.js';
 import { gameState } from './state/gameState.js';
 import { input } from './core/input.js';
-import { SceneManager } from './core/scene.js?v=darker-night-1';
+import { SceneManager } from './core/scene.js?v=render-batches-5';
 import { GraveyardMap } from './entities/map.js?v=map-settings-1';
 import { Player } from './entities/player.js?v=soft-flashlight-1';
-import { Decorations } from './entities/decorations.js?v=batch-settings-1';
-import { FogMistManager } from './entities/fogMist.js?v=camera-editor-1';
+import { Decorations } from './entities/decorations.js?v=cpu-static-1';
+import { FogMistManager } from './entities/fogMist.js?v=render-batches-6';
 import { hud } from './ui/hud.js';
 import { MapEditor } from './entities/mapEditor.js?v=batch-settings-1';
 
@@ -31,7 +31,10 @@ class Game {
     this.decorations.getSettings=()=>({...this.settings});
     this.decorations.setSettings=settings=>this.applySettings(settings);
     this.editor = new MapEditor(this);
-    this.decorations.ready.then(()=>{if(!this.editor.active)this.decorations.buildBatches();}).catch(()=>{});
+    this.decorations.ready.then(()=>{if(!this.editor.active)this.decorations.buildBatches();}).catch(error=>{
+      this.decorations.clearBatches();
+      console.error('Не удалось собрать оптимизированную сцену:',error);
+    });
 
     // Кнопки зума (если присутствуют)
     document.querySelector('#btn-zoom-in')?.addEventListener('click', () => {
@@ -42,6 +45,10 @@ class Game {
     });
 
     this.lastTime = performance.now();
+    this.nextRenderTime = 0;
+    document.addEventListener('visibilitychange', () => {
+      this.lastTime = performance.now(); this.nextRenderTime = 0;
+    });
     this.boundLimit = this.map.getBoundaryLimit(this.player.radius);
 
     // Первоначальный рендер HUD (если элементы есть)
@@ -74,12 +81,18 @@ class Game {
   }
 
   animate(now) {
+    requestAnimationFrame(this.animate);
+    if (document.hidden) return;
+    const cap = this.sceneManager.graphics.frameLimit;
+    const interval = cap ? 1000 / cap : 0;
+    if (interval && now + 0.1 < this.nextRenderTime) return;
+    this.nextRenderTime = interval ? now + interval - Math.max(0, Math.min(interval, now - this.nextRenderTime)) : now;
     const dt = Math.min((now - this.lastTime) / 1000, 0.05);
     this.lastTime = now;
 
     // Опрос ввода
     const inputData = input.getMovementInput();
-    gameState.update({ isRunning: inputData.isRunning });
+    if (gameState.get().isRunning !== inputData.isRunning) gameState.update({ isRunning: inputData.isRunning });
 
     // Обновление состояния персонажа
     if (this.editor.active) this.editor.update(dt, inputData);
@@ -88,6 +101,7 @@ class Game {
     // Обновление анимаций карты (пульсация святыни)
     this.map.update(now);
     this.decorations.update(now, this.player.getPosition(), this.sceneManager.camera);
+    const visibilityChanged = !this.editor.active && this.decorations.updateOptimizedVisibility(this.player.getPosition(), now, this.sceneManager.camera);
 
     // Обновление живой дымки и колышущегося тумана
     this.fogMist.update(this.player.getPosition(), dt, now);
@@ -99,12 +113,13 @@ class Game {
     this.sceneManager.updateCameraTracking(this.editor.active ? this.editor.focus : this.player.getPosition(), dt);
     this.player.bodyCube.quaternion.copy(this.sceneManager.camera.quaternion);
     this.player.updateFlashlight(this.sceneManager.camera);
+    this.sceneManager.updateShadows(this.player.flashlight, this.editor.active || visibilityChanged);
 
     // Отрисовка кадра
     this.sceneManager.render();
     if (!this.editor.active) this.fogMist.renderOverlay(this.sceneManager.renderer, this.sceneManager.camera);
+    this.sceneManager.finishFrame(now);
 
-    requestAnimationFrame(this.animate);
   }
 }
 

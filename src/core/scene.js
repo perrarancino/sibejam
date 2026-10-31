@@ -17,13 +17,27 @@ export class SceneManager {
     this.cameraTarget = new THREE.Vector3(0, 0, 0);
     this.desiredTarget = new THREE.Vector3(0, 0, 0);
     this.zoomLevel = 1.0;
+    this.graphics = { frameLimit: 0, renderScale: 1 };
+    try {
+      const saved = JSON.parse(localStorage.getItem('sibejam-graphics-v2') || 'null');
+      if (saved && [0, 60, 90].includes(saved.frameLimit)) this.graphics.frameLimit = saved.frameLimit;
+      if (saved && [0.6, 0.75, 1].includes(saved.renderScale)) this.graphics.renderScale = saved.renderScale;
+    } catch { /* Storage may be unavailable in a private browser. */ }
+    this.shadowPosition = new THREE.Vector3();
+    this.shadowTarget = new THREE.Vector3();
+    this.lastShadowPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
+    this.lastShadowTarget = new THREE.Vector3(Infinity, Infinity, Infinity);
+    this.metricsTime = performance.now(); this.metricsFrames = 0; this.metricsPeak = 0;
+    this.frameMetrics = { calls: 0, peak: 0, triangles: 0, fps: 0 };
 
     this.camera.position.copy(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
 
     // Рендерер
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // One frame includes the scene, shadow passes and the separate fog overlay.
+    this.renderer.info.autoReset = false;
+    this.renderer.setPixelRatio(this.getRenderPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -33,6 +47,7 @@ export class SceneManager {
 
     this.initLights();
     this.initListeners();
+    this.initGraphicsUI();
     this.handleResize();
   }
 
@@ -49,6 +64,9 @@ export class SceneManager {
     this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.58);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
+    // The world shadow only changes when the editor or visibility buffers do.
+    this.moonLight.shadow.autoUpdate = false;
+    this.moonLight.shadow.needsUpdate = true;
     this.moonLight.shadow.mapSize.width = 2048;
     this.moonLight.shadow.mapSize.height = 2048;
     this.moonLight.shadow.camera.near = 10;
@@ -79,7 +97,49 @@ export class SceneManager {
     this.camera.top = frustumSize * Math.max(1, 1 / aspect) / 2;
     this.camera.bottom = -frustumSize * Math.max(1, 1 / aspect) / 2;
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(this.getRenderPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  getRenderPixelRatio() {
+    const ratio = Math.min(window.devicePixelRatio || 1, 2) * this.graphics.renderScale;
+    // Bound fill cost on large/high-DPI displays; native mode remains available.
+    return this.graphics.renderScale < 1
+      ? Math.min(ratio, 1600 / Math.max(window.innerWidth, window.innerHeight))
+      : ratio;
+  }
+
+  initGraphicsUI() {
+    const panel = document.createElement('details');
+    panel.className = 'graphics-settings';
+    panel.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:90;color:#ded5e7;background:#15121de6;border:1px solid #4d4259;border-radius:6px;padding:8px 10px;font:12px system-ui;line-height:1.8';
+    panel.innerHTML = '<summary style="cursor:pointer">Графика</summary><label>Кадры <select aria-label="Ограничение FPS"><option value="60">60 FPS — экономно</option><option value="90">90 FPS</option><option value="0">По герцовке монитора</option></select></label><br><label>Рендер <select aria-label="Разрешение рендера"><option value="0.6">60%</option><option value="0.75">75% — экономно</option><option value="1">100%</option></select></label><output style="display:block;max-width:280px" aria-label="Статистика отрисовки"></output>';
+    this.graphicsPanel = panel; this.graphicsStats = panel.querySelector('output');
+    const [frames, scale] = panel.querySelectorAll('select');
+    frames.value = String(this.graphics.frameLimit); scale.value = String(this.graphics.renderScale);
+    const save = () => {
+      this.graphics.frameLimit = Number(frames.value);
+      this.graphics.renderScale = Number(scale.value);
+      try { localStorage.setItem('sibejam-graphics-v2', JSON.stringify(this.graphics)); } catch {}
+      this.handleResize();
+    };
+    frames.addEventListener('change', save); scale.addEventListener('change', save);
+    for (const event of ['pointerdown', 'pointermove', 'pointerup', 'wheel']) panel.addEventListener(event, e => e.stopPropagation());
+    panel.addEventListener('keydown', e => e.stopPropagation());
+    document.body.appendChild(panel);
+  }
+
+  updateShadows(flashlight, force = false) {
+    if (force) this.moonLight.shadow.needsUpdate = true;
+    flashlight.shadow.autoUpdate = false;
+    flashlight.getWorldPosition(this.shadowPosition);
+    flashlight.target.getWorldPosition(this.shadowTarget);
+    if (force || this.shadowPosition.distanceToSquared(this.lastShadowPosition) > 1e-6
+      || this.shadowTarget.distanceToSquared(this.lastShadowTarget) > 1e-6) {
+      flashlight.shadow.needsUpdate = true;
+      this.lastShadowPosition.copy(this.shadowPosition);
+      this.lastShadowTarget.copy(this.shadowTarget);
+    }
   }
 
   setZoom(val) {
@@ -96,6 +156,18 @@ export class SceneManager {
   }
 
   render() {
+    this.renderer.info.reset();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  finishFrame(now) {
+    const { calls, triangles } = this.renderer.info.render;
+    this.metricsFrames++; this.metricsPeak = Math.max(this.metricsPeak, calls);
+    const elapsed = now - this.metricsTime;
+    if (elapsed < 500) return;
+    const fps = this.metricsFrames * 1000 / elapsed;
+    this.frameMetrics = { calls, peak: this.metricsPeak, triangles, fps };
+    if (this.graphicsPanel.open) this.graphicsStats.textContent = `${Math.round(fps)} FPS · вызовы: ${calls}, пик: ${this.metricsPeak} · треугольники: ${(triangles / 1e6).toFixed(2)} млн`;
+    this.metricsTime = now; this.metricsFrames = 0; this.metricsPeak = 0;
   }
 }

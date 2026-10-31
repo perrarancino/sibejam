@@ -1,6 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { StaticLightField } from '../core/staticLightField.js?v=2';
 
 const loader = new THREE.TextureLoader();
+// Fully opaque textures need no transparent double-sided render pass.
+const opaqueTextures=new Set(['grass-0.png','bush-0.png','camera-0.png','camera-1.png','candles-0.png','candles-1.png','cave-0.png','church-0.png','church-4.png','fence-0.png','jack-0.png','jack-1.png','lamppost-0.png','lamppost-1.png','new-tree-0.png','new-tree-2.png','pillar-0.png','pumpkin-0.png','pumpkin-1.png','stone-fence-0.png']);
 const foliageWind = {value:0};
 const foliagePlayer = {value:new THREE.Vector3(1000, 0, 1000)};
 // Recent footsteps make nearby tufts shake briefly, then come to rest.
@@ -11,15 +14,19 @@ beaconGradient.addColorStop(0,'rgba(225,255,215,0.5)');beaconGradient.addColorSt
 const beaconTexture=new THREE.CanvasTexture(beaconCanvas);
 
 async function loadModel(name) {
-  const response = await fetch(`./assets/models/${name}.json${name === 'church' ? '?v=church-4' : ''}`);
+  const response = await fetch(`./assets/models/${name}.json${name === 'church' ? '?v=church-4' : name === 'grass' ? '?v=grass-lod-2' : ''}`);
   if (!response.ok) throw new Error(`Не удалось загрузить модель ${name}`);
   const data = await response.json();
   const materials = data.textures.map((url, textureIndex) => {
     const texture = loader.load(url);
+    texture.userData.assetUrl = url;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
-    const material = new THREE.MeshStandardMaterial({map:texture, transparent:true, alphaTest:0.1, side:THREE.DoubleSide, roughness:1, emissive:0xffffff, emissiveMap:texture, emissiveIntensity:0.13});
+    const textureName=url.split('/').pop().split('?')[0];
+    const opaque = opaqueTextures.has(textureName);
+    const material = new THREE.MeshStandardMaterial({map:texture, transparent:!opaque, alphaTest:opaque ? 0 : 0.1, side:THREE.DoubleSide, roughness:1, emissive:0xffffff, emissiveMap:texture, emissiveIntensity:0.13});
+    material.userData.vertexAnimated = name === 'grass' || name === 'bush' || (name.startsWith('new-tree-') && textureIndex > 0);
     // Grass should be lit by the scene instead of glowing in the dark.
     if (name === 'grass') {
       material.emissive.setHex(0x000000);
@@ -58,7 +65,11 @@ async function loadModel(name) {
             float shake = 0.0;
             for (int i = 0; i < 12; i++) {
               float age = foliageWind - grassSteps[i].z;
+              // Uniform early-out: resting vegetation does not evaluate twelve
+              // distance fields and sine waves for every vertex every frame.
+              if (age < 0.0 || age >= 1.15) continue;
               float nearStep = 1.0 - smoothstep(0.2, 1.15, distance(grassBase.xz, grassSteps[i].xy));
+              if (nearStep <= 0.0) continue;
               float fade = (1.0 - smoothstep(0.0, 1.15, age)) * step(0.0, age);
               shake += sin(age * 17.0 + grassBase.x * 3.0 + grassBase.z * 2.0) * nearStep * fade;
             }
@@ -68,7 +79,7 @@ async function loadModel(name) {
             transformed = vec3(position.x * c + position.y * sn, -position.x * sn + position.y * c, position.z);
           `);
       };
-      material.customProgramCacheKey = () => 'vegetation-footsteps-v1';
+      material.customProgramCacheKey = () => 'vegetation-footsteps-active-v2';
     }
     return material;
   });
@@ -107,6 +118,15 @@ async function loadModel(name) {
     mesh.rotation.set(...part.rotation.map(THREE.MathUtils.degToRad));
     root.add(mesh);
   }
+  if(name==='grass') {
+    for (const [key, property] of [['lod', 'grassLodGeometry'], ['lodMedium', 'grassMediumGeometry']]) {
+      if (!data[key]) continue;
+      const lod=new THREE.BufferGeometry();
+      lod.setAttribute('position',new THREE.Float32BufferAttribute(data[key].position,3));
+      lod.setAttribute('uv',new THREE.Float32BufferAttribute(data[key].uv,2));
+      lod.computeVertexNormals();root[property]=lod;
+    }
+  }
   return root;
 }
 
@@ -128,6 +148,13 @@ export class Decorations {
     this.batchRoot=null;
     this.batchHidden=[];
     this.batchStats={originalDraws:0,batchDraws:0};
+    this.optimizedChunks=[];
+    this.hiddenStaticLights=[];
+    this.lightField = new StaticLightField();
+    this.mergedChunks = [];
+    this.dynamicBatches = [];
+    this.frozenTransforms = [];
+    this.lastOptimizationUpdate=-Infinity;
     this.lastGrassStep=null;
     this.grassStepIndex=0;
     this.group=new THREE.Group();
@@ -135,9 +162,16 @@ export class Decorations {
     this.ready=this.load().catch(error=>{console.error('Ошибка загрузки декораций:',error);throw error;});
   }
   async load() {
-    const [broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles,lamppost,jack,stoneFence,cave]=await Promise.all(['new-tree-broadleaf','new-tree-pine','new-tree-tall','new-tree-bare','pillar','camera','church','fence','grass','bush','pumpkin','candles','lamppost','jack','stone-fence','cave'].map(loadModel));
+    const [loadedModels,savedMap]=await Promise.all([
+      Promise.all(['new-tree-broadleaf','new-tree-pine','new-tree-tall','new-tree-bare','pillar','camera','church','fence','grass','bush','pumpkin','candles','lamppost','jack','stone-fence','cave'].map(loadModel)),
+      fetch('./assets/map.json',{cache:'no-store'}).then(response=>response.ok?response.json():null).catch(error=>{console.warn('Не удалось загрузить карту:',error);return null;})
+    ]);
+    const [broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles,lamppost,jack,stoneFence,cave]=loadedModels;
+    const hasSavedMap=savedMap?.version===1 && !savedMap.default && Array.isArray(savedMap.objects) && Array.isArray(savedMap.grass);
     const trees=[broadleaf,pine,tall,bare];
     this.cameraTemplate=camera;
+    this.grassLodGeometry=grass.grassLodGeometry||grass.children[0].geometry;
+    this.grassMediumGeometry=grass.grassMediumGeometry||this.grassLodGeometry;
     const models={broadleaf,pine,tall,bare,pillar,camera,church,fence,grass,bush,pumpkin,candles,lamppost,jack,stoneFence,cave};
     this.modelTypes=new Map(Object.entries(models).map(([type,model])=>[model,type]));
     const place=(model,x,z,scale,rotation=0)=>{const item=model.clone();item.position.set(x,0,z);item.scale.setScalar(scale);item.rotation.y=rotation;this.group.add(item);this.registerEditable(item,this.modelTypes.get(model));return item;};
@@ -169,7 +203,7 @@ export class Decorations {
       wickTips.forEach(([wx,wy,wz])=>{
         const flame=new THREE.Mesh(flameGeometry,flameMaterial);
         flame.position.set(wx/16,wy/16+0.115,wz/16);
-        flame.renderOrder=2;set.add(flame);this.candleFlames.push(flame);
+        flame.renderOrder=2;flame.userData.isCandleFlame=true;set.add(flame);this.candleFlames.push(flame);
       });
       const glow=new THREE.PointLight(0xffa045,1.25,3.4,1.7);
       glow.position.set(0,0.85,0);set.add(glow);this.candleLights.push({light:glow,phase:i*2.1});
@@ -262,7 +296,7 @@ export class Decorations {
     if(grassPart) {
       const matrices=[];
       // Clumps leave open ground between them; a fixed seed keeps the layout stable.
-      for(let patch=0;patch<145;patch++) {
+      for(let patch=0;!hasSavedMap && patch<145;patch++) {
         const centerX=(random()-0.5)*24.0, centerZ=(random()-0.5)*24.0;
         const spread=0.35+random()*0.65, amount=8+Math.floor(random()*12);
         for(let i=0;i<amount;i++) {
@@ -274,7 +308,9 @@ export class Decorations {
           matrices.push(matrix);
         }
       }
-      const tufts=new THREE.InstancedMesh(grassPart.geometry,grassPart.material,matrices.length);
+      const grassCapacity=10000;
+      const tufts=new THREE.InstancedMesh(grassPart.geometry,grassPart.material,grassCapacity);
+      tufts.count=hasSavedMap ? Math.min(grassCapacity,savedMap.grass.reduce((max,item)=>Number.isInteger(item.id)?Math.max(max,item.id+1):max,0)) : matrices.length;
       matrices.forEach((matrix,i)=>tufts.setMatrixAt(i,matrix));
       tufts.instanceMatrix.needsUpdate=true; tufts.receiveShadow=true;
       this.group.add(tufts);
@@ -295,10 +331,9 @@ export class Decorations {
       const entry=this.editable.find(e=>Math.abs(e.object.position.x-collider.x)<0.001 && Math.abs(e.object.position.z-collider.z)<0.001);
       if(entry) { entry.collider=collider; entry.colliderBase={...collider,scale:entry.object.scale.x,rotation:entry.object.rotation.y}; }
     }
-    try {
-      const response=await fetch('./assets/map.json', {cache:'no-store'});
-      if(response.ok) {const data=await response.json();if(!data.default) this.applyMap(data);}
-    } catch(error) { console.warn('Не удалось загрузить карту:',error); }
+    if(hasSavedMap) {
+      try {this.applyMap(savedMap);} catch(error) {console.error('Не удалось применить сохранённую карту:',error);}
+    }
   }
 
   decorateCave(root) {
@@ -388,43 +423,245 @@ export class Decorations {
   }
 
   clearBatches() {
-    for(const mesh of this.batchHidden) mesh.visible=true;
-    this.batchHidden=[];
-    if(this.batchRoot){
+    for (const { object, local, world } of this.frozenTransforms) {
+      object.matrixAutoUpdate = local; object.matrixWorldAutoUpdate = world;
+      object.matrixWorldNeedsUpdate = true;
+    }
+    this.frozenTransforms = [];
+    this.lightField.enabled.value = 0;
+    for (const mesh of this.batchHidden) mesh.visible = true;
+    for (const light of this.hiddenStaticLights) light.visible = true;
+    this.batchHidden = []; this.hiddenStaticLights = [];
+    this.optimizedChunks = []; this.mergedChunks = []; this.dynamicBatches = [];
+    if (this.batchRoot) {
       this.scene.remove(this.batchRoot);
-      this.batchRoot.traverse(node=>{if(node.isInstancedMesh)node.dispose();});
-      this.batchRoot=null;
+      this.batchRoot.traverse(node => {
+        if (node.isInstancedMesh) node.dispose();
+        if (node.userData.ownsGeometry) node.geometry.dispose();
+      });
+      this.batchRoot = null;
     }
   }
 
   buildBatches() {
     this.clearBatches();
-    const batchable=new Set(['broadleaf','pine','tall','bare','bush','pumpkin','fence','stoneFence','fenceSection','stoneFenceSection','grass']);
-    const groups=new Map();
-    for(const entry of this.editable){
-      if(!entry.object.visible||!batchable.has(entry.type))continue;
-      entry.object.updateWorldMatrix(true,true);
-      entry.object.traverseVisible(mesh=>{
-        if(!mesh.isMesh||mesh.isInstancedMesh||Array.isArray(mesh.material))return;
-        let byMaterial=groups.get(mesh.geometry);
-        if(!byMaterial){byMaterial=new Map();groups.set(mesh.geometry,byMaterial);}
-        let byFlags=byMaterial.get(mesh.material);
-        if(!byFlags){byFlags=new Map();byMaterial.set(mesh.material,byFlags);}
-        const flags=`${mesh.castShadow}/${mesh.receiveShadow}/${mesh.renderOrder}`;
-        if(!byFlags.has(flags))byFlags.set(flags,[]);
-        byFlags.get(flags).push(mesh);
+    this.group.updateWorldMatrix(true, true);
+    const root = new THREE.Group(), groups = new Map(), canonical = new Map();
+    this.batchRoot = root; this.scene.add(root);
+    const entryTypes = new Map(this.editable.map(entry => [entry.id, entry.type]));
+    const primitiveKeys = new WeakMap();
+    const geometryKey = geometry => {
+      if (!['PlaneGeometry', 'ConeGeometry', 'ShapeGeometry'].includes(geometry.type)) return geometry.uuid;
+      if (!primitiveKeys.has(geometry)) primitiveKeys.set(geometry, `${geometry.type}/${Array.from(geometry.attributes.position.array)}/${Array.from(geometry.attributes.uv.array)}/${geometry.index ? Array.from(geometry.index.array) : ''}`);
+      return primitiveKeys.get(geometry);
+    };
+    const movingRoots = new Set(this.cameras.map(item => item.pivot));
+    const movingEffects = new Map();
+    for (const item of this.cameras) for (const mesh of [item.beam, item.pool]) movingEffects.set(mesh, item.pivot.parent);
+    const keyFor = material => {
+      if (material.isShaderMaterial) return JSON.stringify(['shader', material.userData.originalBatchVertex || material.vertexShader, material.fragmentShader,
+        Object.fromEntries(Object.entries(material.uniforms).map(([key, uniform]) => [key, uniform.value])),
+        material.side, material.blending, material.depthWrite, material.depthTest]);
+      return JSON.stringify(['standard', material.map?.userData.assetUrl, material.transparent, material.opacity,
+        material.side, material.alphaTest, material.roughness, material.metalness,
+        material.emissive?.getHex(), material.emissiveIntensity, material.customProgramCacheKey()]);
+    };
+    this.group.traverseVisible(mesh => {
+      if (!mesh.isMesh || mesh.isInstancedMesh || Array.isArray(mesh.material)) return;
+      let dynamic = mesh.material.isShaderMaterial, owner = movingEffects.get(mesh), type = 'effects';
+      for (let parent = mesh; parent && parent !== this.group; parent = parent.parent) {
+        if (movingRoots.has(parent)) dynamic = true;
+        if (parent.userData.editorId) {
+          owner = parent;
+          type = entryTypes.get(parent.userData.editorId) || type;
+          break;
+        }
+      }
+      const materialKey = keyFor(mesh.material);
+      if (!canonical.has(materialKey)) canonical.set(materialKey, mesh.material);
+      const material = canonical.get(materialKey);
+      if (material.isShaderMaterial && !material.userData.instanceReady) {
+        material.userData.originalBatchVertex = material.vertexShader;
+        material.vertexShader = material.vertexShader.replace('gl_Position=', `vec4 batchPosition = vec4(position,1.0);
+          #ifdef USE_INSTANCING
+            batchPosition = instanceMatrix * batchPosition;
+          #endif
+          gl_Position=`).replace('modelViewMatrix*vec4(position,1.0)', 'modelViewMatrix*batchPosition');
+        material.forceSinglePass = mesh.geometry.type !== 'ConeGeometry';
+        material.userData.instanceReady = true; material.needsUpdate = true;
+      }
+      const animated = material.userData.vertexAnimated;
+      const merge = material.isMeshStandardMaterial && !dynamic && !animated;
+      const key = `${materialKey}/${merge ? 'merged' : geometryKey(mesh.geometry)}/${mesh.castShadow}/${mesh.receiveShadow}/${mesh.renderOrder}/${dynamic}`;
+      if (!groups.has(key)) groups.set(key, { material, merge, dynamic, sources: [], type });
+      groups.get(key).sources.push({ mesh, owner });
+    });
+    let originalDraws = 0, batchDraws = 0;
+    for (const { material, merge, dynamic, sources, type } of groups.values()) {
+      if (sources.length < 2) continue;
+      const first = sources[0].mesh;
+      let batch, instances;
+      if (merge) {
+        const total = sources.reduce((sum, { mesh }) => sum + (mesh.geometry.index?.count || mesh.geometry.attributes.position.count), 0);
+        const positions = new Float32Array(total * 3), normals = new Float32Array(total * 3), uvs = new Float32Array(total * 2);
+        const point = new THREE.Vector3(), normal = new THREE.Vector3(), normalMatrix = new THREE.Matrix3();
+        let cursor = 0;
+        instances = sources.map(({ mesh }) => {
+          const geo = mesh.geometry, start = cursor, count = geo.index?.count || geo.attributes.position.count;
+          normalMatrix.getNormalMatrix(mesh.matrixWorld);
+          for (let i = 0; i < count; i++, cursor++) {
+            const index = geo.index ? geo.index.getX(i) : i;
+            point.fromBufferAttribute(geo.attributes.position, index).applyMatrix4(mesh.matrixWorld).toArray(positions, cursor * 3);
+            normal.fromBufferAttribute(geo.attributes.normal, index).applyNormalMatrix(normalMatrix).toArray(normals, cursor * 3);
+            if (geo.attributes.uv) { uvs[cursor * 2] = geo.attributes.uv.getX(index); uvs[cursor * 2 + 1] = geo.attributes.uv.getY(index); }
+          }
+          if (!geo.boundingSphere) geo.computeBoundingSphere();
+          const sphere = geo.boundingSphere.clone().applyMatrix4(mesh.matrixWorld);
+          return { start, count, center: sphere.center, radius: sphere.radius };
+        });
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+        const indices = Uint32Array.from({ length: total }, (_, i) => i);
+        geometry.setIndex(new THREE.BufferAttribute(indices.slice(), 1).setUsage(THREE.DynamicDrawUsage));
+        batch = new THREE.Mesh(geometry, material); batch.userData.ownsGeometry = true;
+        this.mergedChunks.push({ high: batch, instances, indices });
+      } else {
+        batch = new THREE.InstancedMesh(first.geometry, material, sources.length);
+        if (!first.geometry.boundingSphere) first.geometry.computeBoundingSphere();
+        instances = sources.map(({ mesh, owner }, i) => {
+          const matrix = mesh.matrixWorld.clone(), sphere = first.geometry.boundingSphere.clone().applyMatrix4(matrix);
+          batch.setMatrixAt(i, matrix);
+          return { matrix, center: sphere.center, radius: sphere.radius, mesh, owner };
+        });
+        batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage); batch.instanceMatrix.needsUpdate = true;
+        if (dynamic) this.dynamicBatches.push({ high: batch, instances });
+        else this.optimizedChunks.push({ high: batch, low: null, instances });
+      }
+      batch.castShadow = first.castShadow; batch.receiveShadow = first.receiveShadow; batch.renderOrder = first.renderOrder;
+      batch.frustumCulled = false; batch.userData.profileType = type; root.add(batch);
+      for (const { mesh } of sources) { mesh.visible = false; this.batchHidden.push(mesh); }
+      originalDraws += sources.length; batchDraws++;
+    }
+
+    const grassInstances = [], matrix = new THREE.Matrix4(), world = new THREE.Matrix4();
+    for (const source of [this.grassMesh, this.paintedGrass]) {
+      if (!source) continue;
+      source.updateWorldMatrix(true, false);
+      if (!source.geometry.boundingSphere) source.geometry.computeBoundingSphere();
+      for (let i = 0; i < source.count; i++) {
+        source.getMatrixAt(i, matrix); const el = matrix.elements;
+        if (Math.hypot(el[0], el[1], el[2]) < 0.001) continue;
+        world.multiplyMatrices(source.matrixWorld, matrix);
+        const sphere = source.geometry.boundingSphere.clone().applyMatrix4(world);
+        grassInstances.push({ matrix: world.clone(), center: sphere.center, radius: sphere.radius });
+      }
+      source.visible = false; this.batchHidden.push(source);
+    }
+    if (this.grassMesh && grassInstances.length) {
+      const high = new THREE.InstancedMesh(this.grassMesh.geometry, this.grassMesh.material, grassInstances.length);
+      const medium = new THREE.InstancedMesh(this.grassMediumGeometry, this.grassMesh.material, grassInstances.length);
+      const low = new THREE.InstancedMesh(this.grassLodGeometry, this.grassMesh.material, grassInstances.length);
+      for (const mesh of [high, medium, low]) {
+        mesh.receiveShadow = true; mesh.frustumCulled = false;
+        mesh.userData.optimizedGrass = true; mesh.userData.profileType = 'grass';
+      }
+      grassInstances.forEach((item, i) => high.setMatrixAt(i, item.matrix));
+      high.instanceMatrix.needsUpdate = true; medium.count = low.count = 0; medium.visible = low.visible = false; root.add(high, medium, low);
+      this.optimizedChunks.push({ high, medium, low, instances: grassInstances });
+    }
+    const lights = [];
+    this.group.traverseVisible(node => { if (node.isPointLight) lights.push(node); });
+    this.lightField.bake(lights, this.getSettings?.().mapSize || 41);
+    for (const light of lights) { light.visible = false; this.hiddenStaticLights.push(light); }
+    this.lightField.bindScene(this.scene);
+    this.batchStats = { originalDraws, batchDraws, grassInstances: grassInstances.length, bakedLights: lights.length };
+    this.lastOptimizationUpdate = -Infinity;
+    this.freezeStaticTransforms();
+  }
+
+  freezeStaticTransforms() {
+    const animated = new Set(this.candleFlames);
+    for (const item of this.cameras) {
+      item.pivot.traverse(object => animated.add(object));
+      for (const object of [item.light, item.light.target, item.beam, item.pool, item.beacon]) animated.add(object);
+    }
+    for (const entry of this.editable) if (entry.type === 'cave') entry.object.traverse(object => {
+      if (/^caveRay(?:Light|Target|Shaft)/.test(object.name)) animated.add(object);
+    });
+    for (const root of [this.group, this.batchRoot]) {
+      root.updateWorldMatrix(true, true);
+      root.traverse(object => {
+        if (animated.has(object)) return;
+        this.frozenTransforms.push({ object, local: object.matrixAutoUpdate, world: object.matrixWorldAutoUpdate });
+        object.matrixAutoUpdate = false; object.matrixWorldAutoUpdate = false;
       });
     }
-    const root=new THREE.Group();let originalDraws=0,batchDraws=0;
-    for(const [geometry,byMaterial] of groups)for(const [material,byFlags] of byMaterial)for(const meshes of byFlags.values()){
-      if(meshes.length<2)continue;
-      const first=meshes[0],batch=new THREE.InstancedMesh(geometry,material,meshes.length);
-      batch.castShadow=first.castShadow;batch.receiveShadow=first.receiveShadow;batch.renderOrder=first.renderOrder;
-      meshes.forEach((mesh,i)=>{batch.setMatrixAt(i,mesh.matrixWorld);mesh.visible=false;this.batchHidden.push(mesh);});
-      batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();root.add(batch);
-      originalDraws+=meshes.length;batchDraws++;
+  }
+
+  updateDynamicBatches() {
+    if (!this.batchRoot) return;
+    for (const { high, instances } of this.dynamicBatches) {
+      let count = 0;
+      for (const item of instances) {
+        if (item.owner && !item.owner.visible) continue;
+        item.mesh.updateWorldMatrix(true, false);
+        high.setMatrixAt(count++, item.mesh.matrixWorld);
+      }
+      high.count = count; high.visible = count > 0; high.instanceMatrix.needsUpdate = true;
     }
-    this.batchRoot=root;this.batchStats={originalDraws,batchDraws};this.scene.add(root);
+    // Camera effect updates set their source visibility every frame. Their
+    // original meshes stay editable but only their shared batches are rendered.
+    for (const mesh of this.batchHidden) mesh.visible = false;
+  }
+
+  updateOptimizedVisibility(player, now, camera) {
+    if (!this.batchRoot || now - this.lastOptimizationUpdate < 180) return false;
+    this.lastOptimizationUpdate = now;
+    const beams = this.fog.groundMistUniforms.uCameraLights.value;
+    const beamCount = this.fog.groundMistUniforms.uCameraLightCount.value;
+    const nearBeam = (center, radius) => {
+      for (let i = 0; i < beamCount; i++) {
+        const beam = beams[i], dx = beam.z - beam.x, dz = beam.w - beam.y, len = dx * dx + dz * dz;
+        const t = len > 0 ? THREE.MathUtils.clamp(((center.x - beam.x) * dx + (center.z - beam.y) * dz) / len, 0, 1) : 0;
+        if (Math.hypot(center.x - (beam.x + dx * t), center.z - (beam.y + dz * t)) < radius + 6) return true;
+      }
+      return false;
+    };
+    const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const sphere = new THREE.Sphere();
+    const visible = (item, margin = 5) => {
+      const distance = Math.hypot(item.center.x - player.x, item.center.z - player.z);
+      if (distance > 20 + item.radius && !nearBeam(item.center, item.radius)) return false;
+      sphere.center.copy(item.center); sphere.radius = item.radius + margin;
+      return frustum.intersectsSphere(sphere);
+    };
+    for (const chunk of this.optimizedChunks) {
+      let highCount = 0, mediumCount = 0, lowCount = 0;
+      for (const item of chunk.instances) {
+        // Non-casters need only a sprint/animation margin until the next
+        // 180 ms visibility update, rather than the long-shadow margin.
+        if (!visible(item, chunk.high.castShadow ? 5 : 2.5)) continue;
+        const distance = Math.hypot(item.center.x - player.x, item.center.z - player.z);
+        if (chunk.low && distance > 9 + item.radius) chunk.low.setMatrixAt(lowCount++, item.matrix);
+        else if (chunk.medium && distance > 4 + item.radius) chunk.medium.setMatrixAt(mediumCount++, item.matrix);
+        else chunk.high.setMatrixAt(highCount++, item.matrix);
+      }
+      chunk.high.count = highCount; chunk.high.visible = highCount > 0; chunk.high.instanceMatrix.needsUpdate = true;
+      if (chunk.medium) { chunk.medium.count = mediumCount; chunk.medium.visible = mediumCount > 0; chunk.medium.instanceMatrix.needsUpdate = true; }
+      if (chunk.low) { chunk.low.count = lowCount; chunk.low.visible = lowCount > 0; chunk.low.instanceMatrix.needsUpdate = true; }
+    }
+    for (const chunk of this.mergedChunks) {
+      const indices = chunk.high.geometry.index.array; let count = 0;
+      for (const item of chunk.instances) {
+        if (!visible(item)) continue;
+        indices.set(chunk.indices.subarray(item.start, item.start + item.count), count); count += item.count;
+      }
+      chunk.high.geometry.setDrawRange(0, count); chunk.high.geometry.index.needsUpdate = true;
+      chunk.high.visible = count > 0;
+    }
+    return true;
   }
 
   registerEditable(object,type,id) {
@@ -525,7 +762,7 @@ export class Decorations {
       entry.colliderBase={...source.colliderBase};entry.collider={...source.collider};this.colliders.push(entry.collider);
     }
     object.traverse(node=>{
-      if(node.isMesh && node.material?.uniforms?.uTime===this.candleTime) this.candleFlames.push(node);
+      if(node.isMesh && node.userData.isCandleFlame) this.candleFlames.push(node);
     });
     this.syncCollider(entry);return entry;
   }
@@ -539,7 +776,7 @@ export class Decorations {
       ids.add(e.id);
     }
     for(const e of data.grass) {
-      if(!validTransform(e) || !Number.isInteger(e.id) || e.id<0 || e.id>=this.grassMesh.count || grassIds.has(e.id)) throw new Error('Некорректная трава в карте');
+      if(!validTransform(e) || !Number.isInteger(e.id) || e.id<0 || e.id>=this.grassMesh.instanceMatrix.count || grassIds.has(e.id)) throw new Error('Некорректная трава в карте');
       grassIds.add(e.id);
     }
     if(data.settings && this.setSettings) this.setSettings(data.settings);
@@ -570,6 +807,7 @@ export class Decorations {
     for(let i=0;i<this.paintedGrass.count;i++) this.setGrass(i,byId.get(i)||{x:0,z:0,rotation:0,scale:0},true);
     if(this.grassMesh) {
       const grass=new Map(data.grass.map(e=>[e.id,e]));
+      this.grassMesh.count=data.grass.reduce((max,e)=>Math.max(max,e.id+1),0);
       for(let i=0;i<this.grassMesh.count;i++) this.setGrass(i,grass.get(i)||{x:0,z:0,rotation:0,scale:0});
     }
   }
@@ -602,7 +840,8 @@ export class Decorations {
         const pitch=-0.15+Math.sin(caveTime*0.43+phase)*0.20;
         target.position.set(Math.sin(yaw)*2.6,Math.max(0.03,0.55+Math.sin(pitch)*2.6),0.38+Math.cos(yaw)*2.6);
         const shaft=entry.object.getObjectByName(`caveRayShaft${i}`);
-        if(shaft){shaft.rotation.y=yaw;shaft.rotation.x=Math.PI/2-pitch;}
+        const effectivePitch=Math.atan2(target.position.y-light.position.y,Math.hypot(target.position.x-light.position.x,target.position.z-light.position.z));
+        if(shaft){shaft.rotation.y=yaw;shaft.rotation.x=Math.PI/2-effectivePitch;}
       }
     }
     for(const flame of this.candleFlames) {
@@ -638,9 +877,13 @@ export class Decorations {
       item.lamp.updateWorldMatrix(true,false);
       // Centre of the lens face in the imported model, just outside its surface.
       const origin=item.lamp.localToWorld(new THREE.Vector3(0,24.3125/16,11.45/16));
-      item.beacon.position.copy(origin).add(new THREE.Vector3(-Math.sin(angle)*0.28,0,-Math.cos(angle)*0.28));
+      // Use the lens's transformed forward axis, including the edited post rotation.
+      const forward=item.lamp.localToWorld(new THREE.Vector3(0,24.3125/16,11.45/16+1)).sub(origin);
+      forward.y=0;
+      if(forward.lengthSq()<1e-8) forward.set(0,0,1);else forward.normalize();
+      item.beacon.position.copy(origin).addScaledVector(forward,-0.28);
       if(item.fogIndex>=0) this.fog.cameraHeads[item.fogIndex]=origin;
-      const target=new THREE.Vector3(origin.x + Math.sin(angle)*3.2,0,origin.z + Math.cos(angle)*3.2);
+      const target=new THREE.Vector3(origin.x+forward.x*3.2,0,origin.z+forward.z*3.2);
       item.light.position.copy(origin);item.light.target.position.copy(target);
       item.pool.position.set(target.x,0.075,target.z);
       const offset=new THREE.Vector3().subVectors(target,origin),length=offset.length();
@@ -649,5 +892,6 @@ export class Decorations {
       item.beam.quaternion.setFromUnitVectors(down,offset.normalize());
       if(item.fogIndex>=0) this.fog.groundMistUniforms.uCameraLights.value[item.fogIndex].set(origin.x,origin.z,target.x,target.z);
     }
+    this.updateDynamicBatches();
   }
 }

@@ -171,9 +171,34 @@ export class FogMistManager {
     ctx.fillRect(0, 0, 128, 128);
 
     const mistTexture = new THREE.CanvasTexture(cv);
+    const wispMaterial = new THREE.MeshBasicMaterial({
+      map: mistTexture, color: 0xb7a6c9, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    wispMaterial.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float instanceOpacity;\nvarying float vWispOpacity;')
+        .replace('#include <project_vertex>', `
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0);
+          mvPosition.xy += position.xy * vec2(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz));
+          gl_Position = projectionMatrix * mvPosition;
+          vWispOpacity = instanceOpacity;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vWispOpacity;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vWispOpacity;');
+    };
+    wispMaterial.customProgramCacheKey = () => 'instanced-fog-wisps-v1';
 
     this.wisps = [];
     const count = 18;
+    const wispGeometry = new THREE.PlaneGeometry(1, 1);
+    this.wispOpacity = new THREE.InstancedBufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage);
+    wispGeometry.setAttribute('instanceOpacity', this.wispOpacity);
+    this.wispBatch = new THREE.InstancedMesh(wispGeometry, wispMaterial, count);
+    this.wispBatch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.wispBatch.frustumCulled = false; this.wispBatch.renderOrder = 4;
+    this.wispBatch.userData.profileType = 'fog-wisps';
+    this.wispBatch.count = 0; this.group.add(this.wispBatch);
     const spawnRange = this.fieldSize * 0.44;
 
     for (let i = 0; i < count; i++) {
@@ -196,7 +221,8 @@ export class FogMistManager {
       sprite.position.set(x, y, z);
       sprite.renderOrder = 4;
 
-      this.group.add(sprite);
+      // Keep the source transforms for animation; one billboard batch renders
+      // every visible wisp instead of submitting up to eighteen sprites.
 
       this.wisps.push({
         sprite,
@@ -248,6 +274,7 @@ export class FogMistManager {
 
     // Анимация парящих клубов дымки
     const half = this.fieldSize * 0.48;
+    let visibleWisps = 0;
     for (let i = 0; i < this.wisps.length; i++) {
       const w = this.wisps[i];
 
@@ -274,7 +301,14 @@ export class FogMistManager {
       } else {
         w.mat.opacity = 0;
       }
+      if (w.mat.opacity > 0.001) {
+        w.sprite.updateMatrix();
+        this.wispBatch.setMatrixAt(visibleWisps, w.sprite.matrix);
+        this.wispOpacity.setX(visibleWisps++, w.mat.opacity);
+      }
     }
+    this.wispBatch.count = visibleWisps; this.wispBatch.visible = visibleWisps > 0;
+    this.wispBatch.instanceMatrix.needsUpdate = true; this.wispOpacity.needsUpdate = true;
   }
 }
 
