@@ -32,11 +32,16 @@ async function loadModel(name) {
         shader.vertexShader = shader.vertexShader
           .replace('#include <common>', '#include <common>\nuniform float foliageWind;')
           .replace('#include <begin_vertex>', `#include <begin_vertex>
-            float sway = sin(foliageWind * 1.1 + modelMatrix[3].x * 0.35 + modelMatrix[3].z * 0.25);
+            vec4 treeOrigin = vec4(0.0, 0.0, 0.0, 1.0);
+            #ifdef USE_INSTANCING
+              treeOrigin = instanceMatrix * treeOrigin;
+            #endif
+            vec3 treeWorld = (modelMatrix * treeOrigin).xyz;
+            float sway = sin(foliageWind * 1.1 + treeWorld.x * 0.35 + treeWorld.z * 0.25);
             transformed.x += sway * 0.085 * clamp((position.y - 0.4) / 1.5, 0.0, 1.0);
-            transformed.z += cos(foliageWind * 0.85 + modelMatrix[3].z * 0.3) * 0.04 * clamp((position.y - 0.4) / 1.5, 0.0, 1.0);`);
+            transformed.z += cos(foliageWind * 0.85 + treeWorld.z * 0.3) * 0.04 * clamp((position.y - 0.4) / 1.5, 0.0, 1.0);`);
       };
-      material.customProgramCacheKey = () => 'foliage-wind-v1';
+      material.customProgramCacheKey = () => 'foliage-wind-instanced-v2';
     }
     if (name === 'grass' || name === 'bush') {
       material.onBeforeCompile = shader => {
@@ -120,6 +125,9 @@ export class Decorations {
     this.modelTypes=new Map();
     this.grassMesh=null;
     this.paintedGrass=null;
+    this.batchRoot=null;
+    this.batchHidden=[];
+    this.batchStats={originalDraws:0,batchDraws:0};
     this.lastGrassStep=null;
     this.grassStepIndex=0;
     this.group=new THREE.Group();
@@ -379,6 +387,46 @@ export class Decorations {
       this.cameras.push({pivot,lamp,light,beam,pool,beacon,fogIndex,baseAngle:i*Math.PI*.7,phase:i*1.7});
   }
 
+  clearBatches() {
+    for(const mesh of this.batchHidden) mesh.visible=true;
+    this.batchHidden=[];
+    if(this.batchRoot){
+      this.scene.remove(this.batchRoot);
+      this.batchRoot.traverse(node=>{if(node.isInstancedMesh)node.dispose();});
+      this.batchRoot=null;
+    }
+  }
+
+  buildBatches() {
+    this.clearBatches();
+    const batchable=new Set(['broadleaf','pine','tall','bare','bush','pumpkin','fence','stoneFence','fenceSection','stoneFenceSection','grass']);
+    const groups=new Map();
+    for(const entry of this.editable){
+      if(!entry.object.visible||!batchable.has(entry.type))continue;
+      entry.object.updateWorldMatrix(true,true);
+      entry.object.traverseVisible(mesh=>{
+        if(!mesh.isMesh||mesh.isInstancedMesh||Array.isArray(mesh.material))return;
+        let byMaterial=groups.get(mesh.geometry);
+        if(!byMaterial){byMaterial=new Map();groups.set(mesh.geometry,byMaterial);}
+        let byFlags=byMaterial.get(mesh.material);
+        if(!byFlags){byFlags=new Map();byMaterial.set(mesh.material,byFlags);}
+        const flags=`${mesh.castShadow}/${mesh.receiveShadow}/${mesh.renderOrder}`;
+        if(!byFlags.has(flags))byFlags.set(flags,[]);
+        byFlags.get(flags).push(mesh);
+      });
+    }
+    const root=new THREE.Group();let originalDraws=0,batchDraws=0;
+    for(const [geometry,byMaterial] of groups)for(const [material,byFlags] of byMaterial)for(const meshes of byFlags.values()){
+      if(meshes.length<2)continue;
+      const first=meshes[0],batch=new THREE.InstancedMesh(geometry,material,meshes.length);
+      batch.castShadow=first.castShadow;batch.receiveShadow=first.receiveShadow;batch.renderOrder=first.renderOrder;
+      meshes.forEach((mesh,i)=>{batch.setMatrixAt(i,mesh.matrixWorld);mesh.visible=false;this.batchHidden.push(mesh);});
+      batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();root.add(batch);
+      originalDraws+=meshes.length;batchDraws++;
+    }
+    this.batchRoot=root;this.batchStats={originalDraws,batchDraws};this.scene.add(root);
+  }
+
   registerEditable(object,type,id) {
     const index=this.typeCounts[type]||0;
     if(!id) this.typeCounts[type]=index+1;
@@ -420,7 +468,7 @@ export class Decorations {
         if(scale.x>0.001) paintedGrass.push({id:i,x:round(pos.x),z:round(pos.z),rotation:round(euler.y),scale:round(scale.x)});
       }
     }
-    return {version:1,objects,grass,paintedGrass};
+    return {version:1,objects,grass,paintedGrass,...(this.getSettings?{settings:this.getSettings()}:{})};
   }
 
   setGrass(index,data,painted=false) {
@@ -494,6 +542,7 @@ export class Decorations {
       if(!validTransform(e) || !Number.isInteger(e.id) || e.id<0 || e.id>=this.grassMesh.count || grassIds.has(e.id)) throw new Error('Некорректная трава в карте');
       grassIds.add(e.id);
     }
+    if(data.settings && this.setSettings) this.setSettings(data.settings);
     const saved=new Map(data.objects.map(e=>[e.id,e]));
     for(const entry of this.editable) {
       const value=saved.get(entry.id);

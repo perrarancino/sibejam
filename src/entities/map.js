@@ -8,6 +8,7 @@ export class GraveyardMap {
   constructor(scene) {
     this.scene = scene;
     this.fieldSize = ENVIRONMENT_CONFIG.fieldSize;
+    this.baseFieldSize = this.fieldSize;
     this.halfField = this.fieldSize / 2;
     this.wallThickness = 0.35;
     this.wallHeight = 0.5;
@@ -159,6 +160,14 @@ export class GraveyardMap {
     this.groundMesh.position.y = -0.3;
     this.groundMesh.receiveShadow = true;
     this.group.add(this.groundMesh);
+  }
+
+  setFieldSize(size) {
+    this.fieldSize=THREE.MathUtils.clamp(size,16,80);
+    this.halfField=this.fieldSize/2;
+    const ratio=this.fieldSize/this.baseFieldSize;
+    this.groundMesh.scale.set(ratio,1,ratio);
+    this.groundMesh.material.map.repeat.set(this.fieldSize/8,this.fieldSize/8);
   }
 
   createBorders() {

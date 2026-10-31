@@ -31,11 +31,15 @@ export class MapEditor {
       #map-editor{position:fixed;z-index:100;top:14px;left:14px;width:260px;max-height:calc(100vh - 28px);overflow:auto;background:rgba(20,18,27,.96);color:#f2eadb;border:1px solid #62564c;border-radius:12px;padding:14px;font:13px/1.4 system-ui;box-shadow:0 10px 35px #0009;user-select:none}
       #map-editor[hidden]{display:none} #map-editor h2{font-size:17px;margin:0 0 5px} #map-editor p{color:#bdb3aa;margin:4px 0 10px} #map-editor .tools{display:grid;grid-template-columns:1fr 1fr;gap:5px}
       #map-editor button,#map-editor input{font:inherit;color:#f1e7d8;background:#34303a;border:1px solid #64585a;border-radius:6px;padding:7px;cursor:pointer} #map-editor button:hover,#map-editor button.active{background:#735b47;border-color:#d4ae79}
-      #map-editor .actions{display:grid;gap:5px;margin-top:10px} #map-editor .actions button{width:100%} #map-editor .row{display:flex;gap:6px;margin:8px 0;align-items:center} #map-editor input[type=number]{width:76px;cursor:text;user-select:text} #map-editor small{display:block;color:#c5b9ab;margin-top:8px} #map-editor .primary{background:#725037}
+      #map-editor .settings{margin:8px 0;padding:8px;background:#29252e;border-radius:7px} #map-editor .settings label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:5px 0} #map-editor .settings input[type=range]{width:115px;padding:0} #map-editor .actions{display:grid;gap:5px;margin-top:10px} #map-editor .actions button{width:100%} #map-editor .row{display:flex;gap:6px;margin:8px 0;align-items:center} #map-editor input[type=number]{width:76px;cursor:text;user-select:text} #map-editor small{display:block;color:#c5b9ab;margin-top:8px} #map-editor .primary{background:#725037}
     `;document.head.appendChild(css);
     this.panel=document.createElement('section');this.panel.id='map-editor';this.panel.hidden=true;
-    this.panel.innerHTML=`<h2>Редактор карты</h2><p>1 — открыть / закрыть · WASD — камера · колёсико — масштаб</p><div class="tools"></div><p class="status">Загрузка объектов…</p><div class="row"><label>Размер <input class="size" type="number" min="0.1" max="5" step="0.1" value="1"></label><button class="rotate">↻ 90°</button><button class="delete">Удалить</button></div><div class="actions"><button class="save">Сохранить черновик</button><button class="draft">Открыть черновик</button><button class="load">Загрузить JSON</button><button class="publish primary">Опубликовать: скачать JSON</button></div><small>Выбор — перетаскивание. ЛКМ — рисовать / ставить, ПКМ — стирать выбранный тип. Забор: протяни несколько секций. R поворачивает. map.json положи в папку assets и закоммить.</small><input class="file" type="file" accept="application/json,.json" hidden>`;
+    this.panel.innerHTML=`<h2>Редактор карты</h2><p>1 — открыть / закрыть · WASD — камера · колёсико — масштаб</p><details class="settings"><summary>Размер карты и освещение</summary><label>Размер карты <input data-setting="mapSize" type="number" min="16" max="80" step="1"></label><label>Общий свет <input data-setting="ambient" type="range" min="0" max="2" step="0.01"></label><label>Свет неба <input data-setting="sky" type="range" min="0" max="2" step="0.01"></label><label>Лунный свет <input data-setting="moon" type="range" min="0" max="2" step="0.01"></label><label>Яркость сцены <input data-setting="exposure" type="range" min="0.2" max="2" step="0.01"></label></details><div class="tools"></div><p class="status">Загрузка объектов…</p><div class="row"><label>Размер <input class="size" type="number" min="0.1" max="5" step="0.1" value="1"></label><button class="rotate">↻ 90°</button><button class="delete">Удалить</button></div><div class="actions"><button class="save">Сохранить черновик</button><button class="draft">Открыть черновик</button><button class="load">Загрузить JSON</button><button class="publish primary">Опубликовать: скачать JSON</button></div><small>Выбор — перетаскивание. ЛКМ — рисовать / ставить, ПКМ — стирать выбранный тип. Забор: протяни несколько секций. R поворачивает. map.json положи в папку assets и закоммить.</small><input class="file" type="file" accept="application/json,.json" hidden>`;
     document.body.appendChild(this.panel);this.status=this.panel.querySelector('.status');this.size=this.panel.querySelector('.size');
+    this.syncSettings();
+    this.panel.querySelectorAll('[data-setting]').forEach(input=>input.addEventListener(input.type==='number'?'change':'input',()=>{
+      if(input.value!=='')this.game.applySettings({[input.dataset.setting]:Number(input.value)});
+    }));
     const tools=this.panel.querySelector('.tools');
     for(const [id,label] of TYPES){const b=document.createElement('button');b.textContent=label;b.dataset.mode=id;b.classList.toggle('active',id===this.mode);b.onclick=()=>{this.mode=id;tools.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));this.selected=null;this.marker.visible=false;this.status.textContent=id==='select'?'Нажми на объект и перетащи.':id==='grass'?'Зажми мышь и рисуй траву.':(id==='fence'||id==='stoneFence')?'Нажми для одной секции или протяни линию. R — повернуть.':'Нажми на землю, чтобы добавить.';};tools.appendChild(b);}
     this.size.onchange=()=>{if(this.selected)this.mutate({scale:Math.max(0.1,Math.min(5,Number(this.size.value)||1))});};
@@ -45,8 +49,9 @@ export class MapEditor {
     const file=this.panel.querySelector('.file');this.panel.querySelector('.load').onclick=()=>file.click();file.onchange=async()=>{try{if(file.files[0])this.load(JSON.parse(await file.files[0].text()));}catch(e){this.status.textContent='Не удалось прочитать JSON карты.';}file.value='';};
     this.panel.querySelector('.publish').onclick=()=>{const blob=new Blob([JSON.stringify(this.game.decorations.snapshot(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='map.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);this.status.textContent='Скачано! Замени assets/map.json и закоммить.';};
   }
-  load(data){this.game.decorations.applyMap(data);this.selected=null;this.marker.visible=false;this.status.textContent='Карта загружена.';}
-  toggle(){if(!this.ready){this.status.textContent='Подожди, объекты ещё загружаются.';return;}this.active=!this.active;this.panel.hidden=!this.active;this.light.visible=this.active;this.marker.visible=this.active&&!!this.selected;if(this.active){this.focus.copy(this.game.player.getPosition());this.game.input.keys.clear();}else{this.dragging=false;this.stroke=null;this.fenceStart=null;this.erasing=false;this.lastErase=null;this.guide.visible=false;this.game.input.keys.clear();} }
+  syncSettings(){if(this.panel)this.panel.querySelectorAll('[data-setting]').forEach(input=>{input.value=this.game.settings[input.dataset.setting];});}
+  load(data){this.game.decorations.applyMap(data);this.syncSettings();this.selected=null;this.marker.visible=false;this.status.textContent='Карта загружена.';}
+  toggle(){if(!this.ready){this.status.textContent='Подожди, объекты ещё загружаются.';return;}this.active=!this.active;this.panel.hidden=!this.active;this.light.visible=this.active;this.marker.visible=this.active&&!!this.selected;if(this.active){this.game.decorations.clearBatches();this.focus.copy(this.game.player.getPosition());this.game.input.keys.clear();}else{this.game.decorations.buildBatches();this.dragging=false;this.stroke=null;this.fenceStart=null;this.erasing=false;this.lastErase=null;this.guide.visible=false;this.game.input.keys.clear();} }
   key(e){if(e.key==='1' && !e.repeat && !/INPUT|TEXTAREA/.test(e.target.tagName)){e.preventDefault();this.toggle();return;}if(!this.active || /INPUT|TEXTAREA/.test(e.target.tagName))return;if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();this.remove();}if(e.key.toLowerCase()==='r'){if(this.mode==='fence'||this.mode==='stoneFence'){this.fenceAngle=(this.fenceAngle+Math.PI/2)%Math.PI;this.status.textContent='Направление забора изменено.';}else this.rotate();}if(e.key==='Escape'){this.selected=null;this.marker.visible=false;}}
   rayAt(e){const rect=this.game.sceneManager.renderer.domElement.getBoundingClientRect();this.pointer.set((e.clientX-rect.left)/rect.width*2-1,1-(e.clientY-rect.top)/rect.height*2);this.ray.setFromCamera(this.pointer,this.game.sceneManager.camera);return this.ray.ray.intersectPlane(this.plane,this.point);}
   down(e){
@@ -56,6 +61,7 @@ export class MapEditor {
     }
     if(e.button!==0)return;
     e.preventDefault();const d=this.game.decorations;
+    if(this.mode!=='select'){const limit=this.game.map.halfField-0.5;this.point.x=THREE.MathUtils.clamp(this.point.x,-limit,limit);this.point.z=THREE.MathUtils.clamp(this.point.z,-limit,limit);}
     if(this.mode==='grass') {
       this.dragging=true;this.stroke=null;this.paintAt(this.point.x,this.point.z);return;
     }
@@ -81,7 +87,8 @@ export class MapEditor {
     if(this.erasing){this.eraseAt(this.point.x,this.point.z);return;}
     if(this.mode==='grass'){this.paintAt(this.point.x,this.point.z);return;}
     if(this.fenceStart){this.fenceEnd.copy(this.point);this.updateGuide();return;}
-    if(this.selected)this.mutate({x:THREE.MathUtils.clamp(this.point.x,-12.5,12.5),z:THREE.MathUtils.clamp(this.point.z,-12.5,12.5)});
+    const limit=this.game.map.halfField-0.5;
+    if(this.selected)this.mutate({x:THREE.MathUtils.clamp(this.point.x,-limit,limit),z:THREE.MathUtils.clamp(this.point.z,-limit,limit)});
   }
   eraseAt(x,z){
     const d=this.game.decorations, radius=0.5, previous=this.lastErase;
@@ -130,7 +137,8 @@ export class MapEditor {
       for(let j=0;j<3;j++){
         const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*0.32;
         const px=cx+Math.cos(angle)*r,pz=cz+Math.sin(angle)*r;
-        if(Math.abs(px)<=12.5&&Math.abs(pz)<=12.5 && !this.game.decorations.isBlocked(px,pz,0.08)) this.game.decorations.paintGrass(px,pz);
+        const limit=this.game.map.halfField-0.5;
+        if(Math.abs(px)<=limit&&Math.abs(pz)<=limit && !this.game.decorations.isBlocked(px,pz,0.08)) this.game.decorations.paintGrass(px,pz);
       }
     }
     this.stroke=new THREE.Vector2(x,z);
@@ -193,5 +201,5 @@ export class MapEditor {
   mutate(change){if(!this.selected)return;const d=this.game.decorations;if(this.selected.entry){const entry=this.selected.entry,o=entry.object;if(change.x!==undefined)o.position.x=change.x;if(change.z!==undefined)o.position.z=change.z;if(change.scale!==undefined)o.scale.setScalar(change.scale);if(change.rotation!==undefined)o.rotation.y=change.rotation;d.syncCollider(entry);}else{const state={...this.grassState(),...change};d.setGrass(this.selected.grass,state,!!this.selected.painted);}this.showSelection();}
   rotate(){if(!this.selected)return;const rotation=this.selected.entry?this.selected.entry.object.rotation.y:this.grassState().rotation;this.mutate({rotation:rotation+Math.PI/2});}
   remove(){if(!this.selected)return;if(this.selected.entry){this.selected.entry.object.visible=false;this.game.decorations.syncCollider(this.selected.entry);}else this.mutate({scale:0});this.selected=null;this.marker.visible=false;this.status.textContent='Объект удалён.';}
-  update(dt,input){if(!this.active)return;const speed=9*dt;this.focus.x=THREE.MathUtils.clamp(this.focus.x+(input.screenX-input.screenY)*0.7071*speed,-12,12);this.focus.z=THREE.MathUtils.clamp(this.focus.z+(-input.screenX-input.screenY)*0.7071*speed,-12,12);}
+  update(dt,input){if(!this.active)return;const speed=9*dt,limit=this.game.map.halfField-1;this.focus.x=THREE.MathUtils.clamp(this.focus.x+(input.screenX-input.screenY)*0.7071*speed,-limit,limit);this.focus.z=THREE.MathUtils.clamp(this.focus.z+(-input.screenX-input.screenY)*0.7071*speed,-limit,limit);}
 }
