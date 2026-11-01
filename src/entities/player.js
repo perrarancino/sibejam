@@ -87,7 +87,7 @@ export class Player {
     this.group.add(light);
   }
 
-  update(inputData, boundLimit, dt, obstacles) {
+  update(inputData, boundLimit, dt, obstacles, cameraAngle = Math.PI / 4) {
     const { screenX, screenY, isMoving, isRunning } = inputData;
     if (!isMoving) {
       this.animationTime = 0;
@@ -102,8 +102,12 @@ export class Player {
     const len = Math.hypot(screenX, screenY);
     if (!len) return;
     const speed = isRunning ? HEROINE_CONFIG.runSpeed : HEROINE_CONFIG.walkSpeed;
-    const dx = (screenX - screenY) / len * 0.70710678 * speed * dt;
-    const dz = (-screenX - screenY) / len * 0.70710678 * speed * dt;
+    const sinA = Math.sin(cameraAngle);
+    const cosA = Math.cos(cameraAngle);
+    const nx = screenX / len;
+    const ny = screenY / len;
+    const dx = (nx * cosA - ny * sinA) * speed * dt;
+    const dz = (-nx * sinA - ny * cosA) * speed * dt;
     // Small steps prevent fast movement from tunnelling through narrow fences.
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.1));
     for (let i = 0; i < steps; i++) {

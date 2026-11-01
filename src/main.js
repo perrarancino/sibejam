@@ -4,13 +4,13 @@
 import { GAME_DESIGN } from './config/index.js';
 import { gameState } from './state/gameState.js';
 import { input } from './core/input.js';
-import { SceneManager } from './core/scene.js?v=render-batches-5';
+import { SceneManager } from './core/scene.js?v=camera-rot-1';
 import { GraveyardMap } from './entities/map.js?v=map-settings-1';
-import { Player } from './entities/player.js?v=soft-flashlight-1';
+import { Player } from './entities/player.js?v=camera-rot-1';
 import { Decorations } from './entities/decorations.js?v=cpu-static-1';
 import { FogMistManager } from './entities/fogMist.js?v=render-batches-6';
 import { hud } from './ui/hud.js';
-import { MapEditor } from './entities/mapEditor.js?v=batch-settings-1';
+import { MapEditor } from './entities/mapEditor.js?v=camera-rot-1';
 
 // Экспорт в window для удобной отладки в консоли браузера
 window.GAME_DESIGN = GAME_DESIGN;
@@ -21,6 +21,7 @@ class Game {
   constructor() {
     const container = document.querySelector('#game-canvas-container');
     this.sceneManager = new SceneManager(container);
+    this.sceneManager.game = this;
     this.map = new GraveyardMap(this.sceneManager.scene);
     this.player = new Player(this.sceneManager.scene);
     this.fogMist = new FogMistManager(this.sceneManager.scene, 56);
@@ -96,7 +97,7 @@ class Game {
 
     // Обновление состояния персонажа
     if (this.editor.active) this.editor.update(dt, inputData);
-    else this.player.update(inputData, this.boundLimit, dt, this.decorations);
+    else this.player.update(inputData, this.boundLimit, dt, this.decorations, this.sceneManager.cameraAngle);
 
     // Обновление анимаций карты (пульсация святыни)
     this.map.update(now);

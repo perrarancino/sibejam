@@ -13,6 +13,13 @@ export class SceneManager {
 
     // Ортографическая изометрическая камера
     this.camera = new THREE.OrthographicCamera(-22, 22, 22, -22, 0.1, 200);
+    this.cameraDistance = Math.hypot(45, 45); // ~63.6396
+    this.cameraElevation = 60;
+    this.cameraAngle = Math.PI / 4;
+    this.targetCameraAngle = Math.PI / 4;
+    this.isRotating = false;
+    this.lastMouseX = 0;
+
     this.cameraOffset = new THREE.Vector3(45, 60, 45);
     this.cameraTarget = new THREE.Vector3(0, 0, 0);
     this.desiredTarget = new THREE.Vector3(0, 0, 0);
@@ -87,6 +94,54 @@ export class SceneManager {
     window.addEventListener('wheel', (e) => {
       this.setZoom(this.zoomLevel * Math.exp(-e.deltaY * 0.0012));
     }, { passive: true });
+
+    // Отключаем всплывающее меню браузера при клике ПКМ по игре
+    window.addEventListener('contextmenu', (e) => {
+      if (e.target === this.renderer.domElement || this.container.contains(e.target)) {
+        e.preventDefault();
+      }
+    });
+
+    // Вращение камеры при зажатии правой кнопки мыши (ПКМ)
+    window.addEventListener('pointerdown', (e) => {
+      if (e.button === 2) {
+        if (this.game?.editor?.active && this.game?.editor?.mode !== 'select') {
+          return; // В редакторе ПКМ стирает объекты
+        }
+        if (e.target === this.renderer.domElement || this.container.contains(e.target)) {
+          this.isRotating = true;
+          this.lastMouseX = e.clientX;
+          this.renderer.domElement.style.cursor = 'grabbing';
+          e.preventDefault();
+        }
+      } else if (e.button === 1) { // Клик колесиком мыши (СКМ) сбрасывает угол к стандартному
+        if (e.target === this.renderer.domElement || this.container.contains(e.target)) {
+          this.targetCameraAngle = Math.PI / 4;
+        }
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (this.isRotating) {
+        const deltaX = e.clientX - this.lastMouseX;
+        this.lastMouseX = e.clientX;
+        this.targetCameraAngle -= deltaX * 0.006;
+      }
+    });
+
+    const stopRotation = () => {
+      if (this.isRotating) {
+        this.isRotating = false;
+        if (this.renderer?.domElement) {
+          this.renderer.domElement.style.cursor = '';
+        }
+      }
+    };
+
+    window.addEventListener('pointerup', (e) => {
+      if (e.button === 2) stopRotation();
+    });
+    window.addEventListener('blur', stopRotation);
   }
 
   handleResize() {
@@ -151,6 +206,18 @@ export class SceneManager {
   updateCameraTracking(targetPos, dt) {
     this.desiredTarget.set(targetPos.x, 0, targetPos.z);
     this.cameraTarget.lerp(this.desiredTarget, 1 - Math.exp(-4.5 * dt));
+
+    // Плавное следование за целевым углом вращения
+    const angleDiff = this.targetCameraAngle - this.cameraAngle;
+    this.cameraAngle += angleDiff * (1 - Math.exp(-18 * dt));
+
+    const r = this.cameraDistance;
+    this.cameraOffset.set(
+      Math.sin(this.cameraAngle) * r,
+      this.cameraElevation,
+      Math.cos(this.cameraAngle) * r
+    );
+
     this.camera.position.copy(this.cameraOffset).add(this.cameraTarget);
     this.camera.lookAt(this.cameraTarget);
   }
