@@ -5,13 +5,6 @@
 export const AUDIO_CATALOG = {
   // Звуки шагов и перемещения персонажа
   player: {
-    walkEcho: [
-      'assets/audio/player/walk_echo/echowalk1.mp3',
-      'assets/audio/player/walk_echo/echowalk2.mp3',
-      'assets/audio/player/walk_echo/echowalk3.mp3',
-      'assets/audio/player/walk_echo/echowalk4.mp3',
-      'assets/audio/player/walk_echo/echowalk5.mp3'
-    ],
     walkWood: [
       'assets/audio/player/walk_wood/woodwalk1.mp3',
       'assets/audio/player/walk_wood/woodwalk2.mp3',

@@ -1,0 +1,5 @@
+Downloaded blood textures (CC0 1.0):
+- blood-splat.png: Blood splat by TobiasM, https://opengameart.org/content/blood-splat
+- blood-decal.png: miscBloodDecalParticles, https://opengameart.org/content/miscblooddecalparticles-bloodsplatter01png
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Textures are displayed with tint, fade and random rotation; blood-decal contains four atlas variants.

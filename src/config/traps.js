@@ -1,103 +1,11 @@
-/**
- * Конфигурация наземных оборонительных сооружений (ловушек).
- *
- * mode: 'auto'   — НЕактивная ловушка: работает САМА ПО СЕБЕ, без какого-либо
- *                  взаимодействия с игроком — поставил и она работает.
- *       'manual' — Активная ловушка: игрок (Агата) запускает её вручную (перегрев/кулдаун см. cooldownSec).
- *
- * Полупрозрачный Призрак проходит сквозь любые ловушки: они не активируются на нём
- * и не наносят ему урона (см. BESTIARY_CONFIG.ghost.immuneToTraps). Святая вспышка
- * камеры материализует его — после этого ловушки действуют на него как на обычного
- * врага. Свет лампы Агаты вредит ему всегда (см. BESTIARY_CONFIG.ghost.weakness).
- *
- * Баланс: 1 семя ≈ ~2 HP суммарного урона; у auto-ловушек 20–40 DPS,
- * у manual-ловушек выше разовый урон/контроль, но есть перезарядка (cooldownSec).
- */
+// Единые характеристики ловушек: время в секундах, расстояние в игровых единицах.
 export const TRAPS_CONFIG = {
-  // ─── НЕактивные (работают сами по себе, игрок только ставит) ───
-  floorSpikes: {
-    id: 'floor_spikes',
-    name: 'Напольные шипы',
-    mode: 'auto',
-    cost: 30,
-    damage: 30, // мгновенно убивает Гнилого прыгуна (25 HP)
-    intervalSec: 1.5,
-    reusable: true,
-    description: 'Автоматические. Ставятся в землю и работают сами: раз в 1.5 сек наносят 30 урона всем наступившим врагам.'
-  },
-  dartDevice: {
-    id: 'dart_device',
-    name: 'Устройство с дротиками',
-    mode: 'auto',
-    cost: 40,
-    damage: 25, // 25 DPS по одиночной цели
-    intervalSec: 1.0,
-    reusable: true,
-    description: 'Автоматическая турель. Раз в 1 сек стреляет дротиком (25 урона) в ближайшего врага. Ставится и работает сама.'
-  },
-  mine: {
-    id: 'mine',
-    name: 'Мина',
-    mode: 'auto',
-    cost: 45,
-    damage: 100, // одним подрывом убивает Тыквоголового (40 HP) и оставляет Пугалу 20 HP
-    intervalSec: 0,
-    reusable: false,
-    description: 'Автоматическая, ОДНОРАЗОВАЯ. Сам подрывает при контакте: 100 урона по площади. Сюрприз против толстых врагов.'
-  },
-  electricFence: {
-    id: 'electric_fence',
-    name: 'Забор с электрическими канатами',
-    mode: 'auto',
-    cost: 55,
-    damage: 40, // 40 DPS по линии — держит коридор
-    intervalSec: 1.0,
-    reusable: true,
-    description: 'Автоматический забор. Ставится и работает сам: раз в 1 сек бьёт током (40 урона) врагов на линии контакта.'
-  },
-
-  // ─── Активные (запускаются игроком вручную) ───
-  slowLiquidPacket: {
-    id: 'slow_liquid_packet',
-    name: 'Пакет с замедляющей жидкостью',
-    mode: 'manual',
-    cost: 35,
-    damage: 0,
-    slowdownPercent: 50, // -50% скорости == удвоение DPS любых соседних ловушек
-    durationSec: 6.0,
-    cooldownSec: 10.0,
-    description: 'Ручная активация. Создаёт лужу: -50% скорости врагов на 6 сек. Идеальна под шипы и забор.'
-  },
-  log: {
-    id: 'log',
-    name: 'Бревно',
-    mode: 'manual',
-    cost: 40,
-    damage: 50,
-    knockdownSec: 2.0, // сбивание с ног
-    cooldownSec: 4.0,
-    description: 'Ручной взмах. 50 урона и сбивает врага с ног (~2 сек). КД 4 сек.'
-  },
-  flamethrower: {
-    id: 'flamethrower',
-    name: 'Огнемёт',
-    mode: 'manual',
-    cost: 65,
-    damage: 80, // одного залпа хватает на Камикадзе и Тыквоголового
-    burnDamage: 20,
-    burnDurationSec: 3.0,
-    cooldownSec: 8.0,
-    description: 'Ручная активация. 80 урона по площади + 20 горения (3 сек). КД 8 сек. Выжигает толпы мелочи.'
-  },
-  cannon: {
-    id: 'cannon',
-    name: 'Пушка (смесь ярости)',
-    mode: 'manual',
-    cost: 70,
-    damage: 0,
-    effect: 'rage', // покрытый смесью монстр атакует своих
-    durationSec: 8.0,
-    cooldownSec: 20.0,
-    description: 'Ручной выстрел. Монстр под смесью 8 сек бьёт других монстров. Джокер против Пугал и толп. КД 20 сек.'
-  }
+  floorSpikes: { id:'floor_spikes', name:'Напольные шипы', mode:'auto', cost:40, damage:15, intervalSec:1, range:.8, description:'Шипы срабатывают раз в секунду, пока враг стоит на платформе.' },
+  dartDevice: { id:'dart_device', name:'Устройство с дротиками', mode:'auto', cost:60, damage:12, intervalSec:1, range:7, description:'Стреляет в ближайшего врага раз в секунду.' },
+  mine: { id:'mine', name:'Мина', mode:'auto', cost:25, damage:19, range:2.2, description:'Одноразовый взрыв при приближении врага.' },
+  electricFence: { id:'electric_fence', name:'Забор с электрическими канатами', mode:'auto', cost:35, slowdownPercent:25, description:'Замедляет проходящих врагов на 25%.' },
+  slowLiquidPacket: { id:'slow_liquid_packet', name:'Пакет с замедляющей жидкостью', mode:'manual', cost:30, slowdownPercent:50, durationSec:30, range:2.5, description:'Одноразовая лужа на 30 секунд: скорость врагов −50%.' },
+  log: { id:'log', name:'Бревно', mode:'manual', cost:35, damage:18, range:12, description:'Одноразовое бревно катится вперёд и наносит урон.' },
+  flamethrower: { id:'flamethrower', name:'Огнемёт', mode:'manual', cost:80, damage:10, intervalSec:.5, durationSec:30, range:3.5, description:'Вращается и выпускает огонь в четыре стороны 30 секунд.' },
+  cannon: { id:'cannon', name:'Пушка (смесь ярости)', mode:'manual', cost:65, range:9, targets:3, description:'Одноразово обращает до трёх ближайших монстров на вашу сторону.' }
 };

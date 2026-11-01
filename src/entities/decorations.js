@@ -144,6 +144,7 @@ export class Decorations {
     this.typeCounts={};
     this.modelTypes=new Map();
     this.grassMesh=null;
+    this.grassEnabled=true;
     this.paintedGrass=null;
     this.batchRoot=null;
     this.batchHidden=[];
@@ -419,7 +420,23 @@ export class Decorations {
       const beacon=new THREE.Sprite(new THREE.SpriteMaterial({map:beaconTexture,color:0xc6ffc1,transparent:true,opacity:0.55,depthTest:true,depthWrite:false,blending:THREE.AdditiveBlending}));
       beacon.scale.set(1.4,1.4,1);beacon.renderOrder=-1;this.group.add(beacon);
       const fogIndex=this.fog.addCameraLight(post.position.x,post.position.z,post.position.x+2,post.position.z+2);
-      this.cameras.push({pivot,lamp,light,beam,pool,beacon,fogIndex,baseAngle:i*Math.PI*.7,phase:i*1.7});
+      pivot.rotation.y=i*Math.PI*.7;
+      this.cameras.push({pivot,lamp,light,beam,pool,beacon,fogIndex,aimDistance:3.2});
+  }
+
+  aimCamera(item, worldPoint, dt) {
+    if (!item || !worldPoint) return;
+    const post=item.pivot.parent;
+    post.updateWorldMatrix(true,false);
+    const local=post.worldToLocal(worldPoint.clone()).sub(item.pivot.position);
+    if (Math.hypot(local.x,local.z)<0.1) return;
+    const desired=Math.atan2(local.x,local.z);
+    const difference=Math.atan2(Math.sin(desired-item.pivot.rotation.y),Math.cos(desired-item.pivot.rotation.y));
+    const blend=1-Math.exp(-3.5*dt);
+    item.pivot.rotation.y+=difference*blend;
+    const worldOrigin=new THREE.Vector3();item.pivot.getWorldPosition(worldOrigin);
+    const distance=THREE.MathUtils.clamp(Math.hypot(worldPoint.x-worldOrigin.x,worldPoint.z-worldOrigin.z),1.2,10);
+    item.aimDistance+=(distance-item.aimDistance)*blend;
   }
 
   clearBatches() {
@@ -430,6 +447,7 @@ export class Decorations {
     this.frozenTransforms = [];
     this.lightField.enabled.value = 0;
     for (const mesh of this.batchHidden) mesh.visible = true;
+    if(!this.grassEnabled){if(this.grassMesh)this.grassMesh.visible=false;if(this.paintedGrass)this.paintedGrass.visible=false;}
     for (const light of this.hiddenStaticLights) light.visible = true;
     this.batchHidden = []; this.hiddenStaticLights = [];
     this.optimizedChunks = []; this.mergedChunks = []; this.dynamicBatches = [];
@@ -548,6 +566,7 @@ export class Decorations {
     const grassInstances = [], matrix = new THREE.Matrix4(), world = new THREE.Matrix4();
     for (const source of [this.grassMesh, this.paintedGrass]) {
       if (!source) continue;
+      if (!this.grassEnabled) {source.visible=false;this.batchHidden.push(source);continue;}
       source.updateWorldMatrix(true, false);
       if (!source.geometry.boundingSphere) source.geometry.computeBoundingSphere();
       for (let i = 0; i < source.count; i++) {
@@ -662,6 +681,13 @@ export class Decorations {
       chunk.high.visible = count > 0;
     }
     return true;
+  }
+
+  setGrassEnabled(enabled, editorActive=false) {
+    if(this.grassEnabled===enabled)return;
+    this.grassEnabled=enabled;
+    if(this.batchRoot&&!editorActive)this.buildBatches();
+    else {if(this.grassMesh)this.grassMesh.visible=enabled;if(this.paintedGrass)this.paintedGrass.visible=enabled;}
   }
 
   registerEditable(object,type,id) {
@@ -872,8 +898,6 @@ export class Decorations {
         }
         continue;
       }
-      const angle=item.baseAngle + Math.sin(now * 0.00045 + item.phase) * 0.7;
-      item.pivot.rotation.y=angle;
       item.lamp.updateWorldMatrix(true,false);
       // Centre of the lens face in the imported model, just outside its surface.
       const origin=item.lamp.localToWorld(new THREE.Vector3(0,24.3125/16,11.45/16));
@@ -883,7 +907,7 @@ export class Decorations {
       if(forward.lengthSq()<1e-8) forward.set(0,0,1);else forward.normalize();
       item.beacon.position.copy(origin).addScaledVector(forward,-0.28);
       if(item.fogIndex>=0) this.fog.cameraHeads[item.fogIndex]=origin;
-      const target=new THREE.Vector3(origin.x+forward.x*3.2,0,origin.z+forward.z*3.2);
+      const target=new THREE.Vector3(origin.x+forward.x*item.aimDistance,0,origin.z+forward.z*item.aimDistance);
       item.light.position.copy(origin);item.light.target.position.copy(target);
       item.pool.position.set(target.x,0.075,target.z);
       const offset=new THREE.Vector3().subVectors(target,origin),length=offset.length();

@@ -24,11 +24,15 @@ export class SceneManager {
     this.cameraTarget = new THREE.Vector3(0, 0, 0);
     this.desiredTarget = new THREE.Vector3(0, 0, 0);
     this.zoomLevel = 1.0;
-    this.graphics = { frameLimit: 0, renderScale: 1 };
+    this.graphics = { frameLimit: 0, renderScale: 0.75, grass:true, shadows:true };
+    this.hasSavedGraphics = false;
     try {
-      const saved = JSON.parse(localStorage.getItem('sibejam-graphics-v2') || 'null');
+      const saved = JSON.parse(localStorage.getItem('sibejam-graphics-v3') || 'null');
       if (saved && [0, 60, 90].includes(saved.frameLimit)) this.graphics.frameLimit = saved.frameLimit;
       if (saved && [0.6, 0.75, 1].includes(saved.renderScale)) this.graphics.renderScale = saved.renderScale;
+      if (saved && [0.6,0.75,1].includes(saved.renderScale) && [0,60,90].includes(saved.frameLimit)) this.hasSavedGraphics=true;
+      if (typeof saved?.grass==='boolean') this.graphics.grass=saved.grass;
+      if (typeof saved?.shadows==='boolean') this.graphics.shadows=saved.shadows;
     } catch { /* Storage may be unavailable in a private browser. */ }
     this.shadowPosition = new THREE.Vector3();
     this.shadowTarget = new THREE.Vector3();
@@ -46,29 +50,31 @@ export class SceneManager {
     this.renderer.info.autoReset = false;
     this.renderer.setPixelRatio(this.getRenderPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = this.graphics.shadows;
+    document.body.classList.toggle('low-graphics',!this.graphics.grass);
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.92;
+    this.renderer.toneMappingExposure = 1.04;
     this.container.appendChild(this.renderer.domElement);
 
     this.initLights();
     this.initListeners();
     this.initGraphicsUI();
     this.handleResize();
+    this.awaitingPreset=false;
   }
 
   initLights() {
     // Мягкий ночной заполняющий свет (подчеркивает детали в тени)
-    this.ambientLight = new THREE.AmbientLight(0x536a94, 0.27);
+    this.ambientLight = new THREE.AmbientLight(0x6379a0, 0.36);
     this.scene.add(this.ambientLight);
 
     // Холодный свет неба и мягкий отражённый свет от земли.
-    this.skyLight = new THREE.HemisphereLight(0x8daee8, 0x252736, 0.62);
+    this.skyLight = new THREE.HemisphereLight(0x8daee8, 0x252736, 0.8);
     this.scene.add(this.skyLight);
 
     // Холодный лунный свет (отбрасывает мягкие тени от персонажа и стен)
-    this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.58);
+    this.moonLight = new THREE.DirectionalLight(0x94b8ff, 0.74);
     this.moonLight.position.set(30, 50, 20);
     this.moonLight.castShadow = true;
     // The world shadow only changes when the editor or visibility buffers do.
@@ -159,29 +165,57 @@ export class SceneManager {
   getRenderPixelRatio() {
     const ratio = Math.min(window.devicePixelRatio || 1, 2) * this.graphics.renderScale;
     // Bound fill cost on large/high-DPI displays; native mode remains available.
-    return this.graphics.renderScale < 1
-      ? Math.min(ratio, 1600 / Math.max(window.innerWidth, window.innerHeight))
-      : ratio;
+    return ratio;
   }
 
   initGraphicsUI() {
     const panel = document.createElement('details');
-    panel.className = 'graphics-settings';
-    panel.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:90;color:#ded5e7;background:#15121de6;border:1px solid #4d4259;border-radius:6px;padding:8px 10px;font:12px system-ui;line-height:1.8';
-    panel.innerHTML = '<summary style="cursor:pointer">Графика</summary><label>Кадры <select aria-label="Ограничение FPS"><option value="60">60 FPS — экономно</option><option value="90">90 FPS</option><option value="0">По герцовке монитора</option></select></label><br><label>Рендер <select aria-label="Разрешение рендера"><option value="0.6">60%</option><option value="0.75">75% — экономно</option><option value="1">100%</option></select></label><output style="display:block;max-width:280px" aria-label="Статистика отрисовки"></output>';
+    panel.className = 'graphics-settings';panel.style.display='none';
+    panel.style.cssText = 'display:none;position:fixed;right:12px;bottom:12px;z-index:90;color:#ded5e7;background:#15121de6;border:1px solid #4d4259;border-radius:6px;padding:8px 10px;font:12px system-ui;line-height:1.8';
+    panel.innerHTML = '<summary style="cursor:pointer">Графика</summary><label>Профиль <select aria-label="Профиль графики"><option value="custom">Свои настройки</option><option value="potato">Картошка</option><option value="normal">Нормальный</option><option value="good">Хороший</option></select></label><br><label>Кадры <select aria-label="Ограничение FPS"><option value="60">60 FPS — экономно</option><option value="90">90 FPS</option><option value="0">По герцовке монитора</option></select></label><br><label>Рендер <select aria-label="Разрешение рендера"><option value="0.6">60%</option><option value="0.75">75% — экономно</option><option value="1">100%</option></select></label><output style="display:block;max-width:280px" aria-label="Статистика отрисовки"></output>';
     this.graphicsPanel = panel; this.graphicsStats = panel.querySelector('output');
-    const [frames, scale] = panel.querySelectorAll('select');
+    const [profile, frames, scale] = panel.querySelectorAll('select');
+    this.graphicsControls={profile,frames,scale};
     frames.value = String(this.graphics.frameLimit); scale.value = String(this.graphics.renderScale);
     const save = () => {
       this.graphics.frameLimit = Number(frames.value);
       this.graphics.renderScale = Number(scale.value);
-      try { localStorage.setItem('sibejam-graphics-v2', JSON.stringify(this.graphics)); } catch {}
+      profile.value='custom';
+      try { localStorage.setItem('sibejam-graphics-v3', JSON.stringify(this.graphics)); } catch {}
       this.handleResize();
     };
     frames.addEventListener('change', save); scale.addEventListener('change', save);
+    profile.addEventListener('change',()=>{if(profile.value!=='custom')this.applyGraphicsPreset(profile.value);});
     for (const event of ['pointerdown', 'pointermove', 'pointerup', 'wheel']) panel.addEventListener(event, e => e.stopPropagation());
     panel.addEventListener('keydown', e => e.stopPropagation());
     document.body.appendChild(panel);
+  }
+
+  applyGraphicsPreset(name) {
+    const presets={potato:{frameLimit:60,renderScale:.6,grass:false,shadows:false},normal:{frameLimit:0,renderScale:.75,grass:true,shadows:true},good:{frameLimit:0,renderScale:1,grass:true,shadows:true}};
+    if(!presets[name])return;
+    Object.assign(this.graphics,presets[name]);this.renderer.shadowMap.enabled=this.graphics.shadows;
+    document.body.classList.toggle('low-graphics',!this.graphics.grass);
+    this.moonLight.shadow.needsUpdate=true;
+    const {profile,frames,scale}=this.graphicsControls;profile.value=name;frames.value=String(this.graphics.frameLimit);scale.value=String(this.graphics.renderScale);
+    try{localStorage.setItem('sibejam-graphics-v3',JSON.stringify(this.graphics));}catch{}
+    this.handleResize();this.onGraphicsChanged?.(this.graphics);
+  }
+
+  showGraphicsPicker() {
+    this.awaitingPreset=true;
+    const style=document.createElement('style');style.textContent=`
+      #graphics-picker{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:#09070dee;color:#f2e5cb;padding:20px}
+      #graphics-picker .card{width:min(780px,100%);padding:32px;background:#211b21;border:1px solid #a78a5e;box-shadow:0 15px 70px #000;text-align:center}
+      #graphics-picker h1{font-size:38px;margin:0 0 8px}#graphics-picker p{font-size:22px;color:#cbbda7;margin:0 0 22px}
+      #graphics-picker .options{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}#graphics-picker button{min-height:130px;cursor:pointer;background:#332c30;color:#f3dfb7;border:1px solid #796647;padding:15px;font-size:28px}
+      #graphics-picker button:hover,#graphics-picker button:focus-visible{background:#594537;border-color:#e3bd7d}#graphics-picker small{display:block;font-size:17px;color:#c6b59a;margin-top:8px}
+      @media(max-width:600px){#graphics-picker .options{grid-template-columns:1fr}#graphics-picker button{min-height:65px;font-size:23px}#graphics-picker .card{padding:20px}#graphics-picker h1{font-size:30px}}
+    `;document.head.appendChild(style);
+    const overlay=document.createElement('div');overlay.id='graphics-picker';overlay.innerHTML='<div class="card" role="dialog" aria-modal="true" aria-labelledby="graphics-title"><h1 id="graphics-title">Выбери свой ПК</h1><p>Настройку можно изменить позже в разделе «Графика».</p><div class="options"><button data-preset="potato">Картошка<small>60% · без травы и теней</small></button><button data-preset="normal">Нормальный<small>75% · трава и тени</small></button><button data-preset="good">Хороший<small>100% · все эффекты</small></button></div></div>';
+    for(const event of ['pointerdown','pointermove','pointerup','wheel','keydown'])overlay.addEventListener(event,e=>e.stopPropagation());
+    overlay.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{this.applyGraphicsPreset(b.dataset.preset);this.awaitingPreset=false;overlay.remove();this.game?.input.keys.clear();}));
+    document.body.appendChild(overlay);overlay.querySelector('[data-preset="normal"]').focus();
   }
 
   updateShadows(flashlight, force = false) {

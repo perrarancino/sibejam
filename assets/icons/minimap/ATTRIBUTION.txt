@@ -1,0 +1,13 @@
+Minimap icons from Game-icons.net, licensed CC BY 3.0:
+- Church by Delapouite: https://game-icons.net/1x1/delapouite/church.html
+- CCTV Camera by Delapouite: https://game-icons.net/1x1/delapouite/cctv-camera.html
+- Cowled by Lorc: https://game-icons.net/1x1/lorc/cowled.html
+- Forest by Delapouite: https://game-icons.net/1x1/delapouite/forest.html
+License: https://creativecommons.org/licenses/by/3.0/
+Icons displayed on colored backgrounds and scaled to fit the minimap.
+
+Two Coins by Delapouite: https://game-icons.net/1x1/delapouite/two-coins.html
+The coin icon is recolored with CSS. License: https://creativecommons.org/licenses/by/3.0/
+
+Plain Padlock by Delapouite: https://game-icons.net/1x1/delapouite/plain-padlock.html
+Displayed in a badge and recolored with CSS. License: https://creativecommons.org/licenses/by/3.0/

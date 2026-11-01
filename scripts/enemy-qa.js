@@ -1,0 +1,75 @@
+import * as THREE from 'three';
+import {gameState} from '../src/state/gameState.js';
+import {overlaps,ENEMY_SOUNDS} from '../src/entities/enemyMechanics.js';
+const wait=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+while(!window.gameInstance?.player.mixer)await wait();
+const game=window.gameInstance;await game.combat.ready;await game.decorations.ready;
+game.paused=true;game.story.read=true;game.story.close();
+const c=game.combat,rows=[];
+const check=(ok,label)=>{rows.push(`${ok?'PASS':'FAIL'} ${label}`);if(!ok)console.error('Enemy QA:',label);};
+const sourceCameras=game.story.getCameras.bind(game.story);
+const sourceColliders=game.decorations.colliders;
+const light=new THREE.SpotLight(0xbbeac7,34,12,.48,.8);light.position.set(0,2,8);light.target.position.set(0,0,4);game.sceneManager.scene.add(light,light.target);
+let lit=false;game.story.getCameras=()=>lit?[{light}]:[];
+c.navigation={start:0,point:()=>({x:0,z:6})};
+c.spawn('ghost');const ghost=c.enemies[0];
+c.updateGhost(ghost,.5);const hp=ghost.hp;
+check(!c.damage(ghost,10,'auto')&&ghost.hp===hp,'прозрачный призрак не получает автоматический урон');
+check(c.damage(ghost,1,'manual')&&ghost.hp===hp-1,'ручной урон действует на прозрачного призрака');
+while(!game.build.models.has('mine'))await wait();
+const mine=game.build.models.get('mine').clone();mine.userData.key='mine';mine.position.copy(ghost.mesh.position);game.build.placed.push(mine);game.sceneManager.scene.add(mine);
+c.updateTrap(mine,.1);check(!mine.userData.detonated&&game.build.placed.includes(mine),'призрак не запускает мину');
+const spike=new THREE.Group();spike.userData.key='spikes';spike.position.copy(ghost.mesh.position);
+for(let i=0;i<60;i++)c.updateTrap(spike,1/30);
+check(ghost.hp===hp-1,'шипы не бьют призрачного врага');
+lit=true;c.updateGhost(ghost,1);check(ghost.revealed&&ghost.ghostOpacity>.99,'свет камеры делает призрака плотным');
+c.updateTrap(mine,.1);check(mine.userData.detonated&&ghost.hp<=0,'проявленный призрак запускает мину и получает урон');
+c.stop();game.story.getCameras=sourceCameras;
+// Map barriers never enable a jump. Only placed traps do.
+gameState.update({phase:'WAVE_ACTIVE',wave:1});c.active=true;c.remaining=1;c.spawnTimer=1000;c.navigation={start:0,point:()=>({x:0,z:0}),waypoint:()=>({x:3,z:0})};
+c.spawn('scarecrow');const jumper=c.enemies[0];
+const fence={type:'box',x:1,z:0,halfX:.1,halfZ:2};game.decorations.colliders=[fence];
+check(!c.beginJump(jumper,1,0),'пугало не перепрыгивает забор');
+const jumpTrap=new THREE.Group();jumpTrap.userData.key='spikes';jumpTrap.position.set(1,0,0);game.build.placed.push(jumpTrap);
+check(!c.beginJump(jumper,1,0),'даже ловушка за забором не разрешает прыжок через забор');
+game.decorations.colliders=[];
+let peak=0,started=false,landed=false;
+for(let i=0;i<240;i++){c.update(1/60);peak=Math.max(peak,jumper.mesh.position.y);if(jumper.jump)started=true;if(started&&!jumper.jump&&jumper.mesh.position.x>1.4)landed=true;}
+check(started&&landed&&peak>1.4,'пугало перепрыгивает ловушку');
+jumpTrap.position.set(jumper.mesh.position.x+1,0,0);check(jumper.jumpCooldown>5&&!c.beginJump(jumper,1,0),'повторный прыжок заблокирован десятисекундным кулдауном');
+for(let i=0;i<600;i++)jumper.jumpCooldown=Math.max(0,jumper.jumpCooldown-1/60);
+check(c.beginJump(jumper,1,0),'после десяти секунд прыжок снова доступен');
+game.build.placed.splice(game.build.placed.indexOf(jumpTrap),1);
+c.stop();game.decorations.colliders=sourceColliders;gameState.update({phase:'WAVE_ACTIVE',wave:5});c.start();
+let spawned=0;for(let i=0;i<25;i++)if(c.spawn()){spawned++;c.remaining--;}
+const boss=c.enemies.find(e=>e.type.isBoss);check(spawned===25&&c.enemies.filter(e=>e.type.isBoss).length===1&&boss.hp===500,'последняя волна: 24 обычных врага и один босс с 500 HP');
+for(const e of c.enemies)e.mesh.position.set(100,0,100);boss.mesh.position.set(0,0,6);
+const cannon=new THREE.Group();cannon.userData.key='cannon';cannon.position.copy(boss.mesh.position);const before=c.effects.length;c.activate(cannon);
+check(c.effects.length===before&&!boss.ally,'босс не обращается пушкой');
+for(const e of c.enemies)c.damage(e,10000,'manual');c.update(0);
+check(gameState.get().phase==='WAVE_CLEAR'&&game.story.modal.textContent.includes('Джек повержен'),'победа после последней волны');
+game.story.close();gameState.update({phase:'PREPARATION',wave:0});c.stop();
+// Leave a bright visual showcase after the assertions.
+c.navigation={start:0,point:()=>({x:0,z:6})};
+for(const id of ['pumpkinhead','ghost','scarecrow','jackPumpkin'])c.spawn(id);
+c.spawn('ghost');
+const positions=[[-3,8],[-1,8],[1,8],[3,8],[-1,11]];
+for(const [i,e] of c.enemies.entries()){e.mesh.position.set(positions[i][0],0,positions[i][1]);e.mixer?.update(.4);}
+const shown=c.enemies.find(e=>e.type.id==='ghost');shown.revealed=true;shown.ghostOpacity=1;c.setGhostAppearance(shown,1);
+const scarecrow=c.enemies.find(e=>e.type.id==='scarecrow');scarecrow.mesh.position.y=1.1;
+c.bossBar.hidden=false;c.bossBar.querySelector('progress').value=500;
+game.applySettings({...game.settings,ambient:1.1,sky:1.2,exposure:1.2});game.sceneManager.setZoom(game.sceneManager.zoomLevel*2.5);game.player.updateFlashlight(game.sceneManager.camera);game.sceneManager.updateShadows(game.player.flashlight,true);game.sceneManager.render();
+const panel=document.createElement('div');panel.style.cssText='position:fixed;top:12px;left:12px;background:#fff;color:#151515;z-index:500;padding:14px;font:16px system-ui;max-width:52vw';const output=document.createElement('pre');output.id='enemy-qa-results';output.textContent=rows.join('\n');panel.append(output);
+const button=document.createElement('button');button.textContent='Проверить звук и положение камеры';button.onclick=async()=>{
+ await game.audio.unlock();await game.audio.ready;
+ await Promise.all(Object.keys(game.audio.manifest).map(url=>game.audio.loadBuffer(url)));
+ output.textContent+='\nPASS декодированы все '+Object.keys(game.audio.manifest).length+' нормализованных звуков';
+ game.audio.stopEffects('enemies');for(const files of Object.values(ENEMY_SOUNDS))game.audio.playEffect('./assets/audio/enemies/'+files[0],.15,'enemies');
+ const probe=game.audio.playEffect('./assets/audio/enemies/bossjackpumpkin/bossjackpumpkin1.mp3',1,'qa',{x:10,z:0});
+ await new Promise(resolve=>setTimeout(resolve,200));
+ game.audio.update(game.sceneManager.camera,0,{x:0,z:0});const far=probe.effectiveGain;
+ game.audio.update(game.sceneManager.camera,0,{x:9,z:0});const near=probe.effectiveGain;
+ output.textContent+=`\n${near>far?'PASS':'FAIL'} камера ближе: ${far.toFixed(3)} → ${near.toFixed(3)}`;
+ game.audio.stopEffects('qa');
+ const voices=[...game.audio.active].filter(entry=>entry.group==='enemies'&&!entry.audio.paused);output.textContent+=`\n${voices.length===4?'PASS':'FAIL'} воспроизводятся четыре голоса (${voices.length})`;
+};panel.append(button);document.body.append(panel);

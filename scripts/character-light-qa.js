@@ -1,0 +1,45 @@
+import * as THREE from 'three';
+import {scene,renderer,camera,player} from './character-studio.js';
+while(!player.mixer)await new Promise(resolve=>requestAnimationFrame(resolve));
+const results=[];
+let maxOrbit=0;
+for(const speed of [0,1.5,3.4])for(let frame=0;frame<120;frame++){
+ player.visual.rotation.y=frame/120*Math.PI*2;
+ player.updateLocomotion(speed,1/60);player.updateFlashlight(camera);
+ const root=player.rootBone.getWorldPosition(new THREE.Vector3());
+ maxOrbit=Math.max(maxOrbit,Math.hypot(root.x,root.z));
+}
+results.push(`360° idle/walk/run: root axis error ${maxOrbit.toFixed(7)} m`);
+player.visual.rotation.y=0;player.setAnimation('idle');player.mixer.update(.1);player.updateFlashlight(camera);
+const snapshots=[];scene.traverse(o=>{snapshots.push({o,visible:o.visible,intensity:o.intensity});if(o.isLight&&o!==player.flashlight)o.intensity=.7;});
+const floor=scene.children.find(o=>o.isMesh);floor.visible=false;
+player.lantern.traverse(o=>{if(o.isMesh)o.visible=false;});
+player.flashlightTarget.position.set(0,.9,0);
+renderer.shadowMap.enabled=true;player.flashlight.shadow.autoUpdate=true;
+const target=new THREE.WebGLRenderTarget(256,128),saved=renderer.getRenderTarget();
+const read=()=>{renderer.setRenderTarget(target);renderer.render(scene,camera);const pixels=new Uint8Array(256*128*4);renderer.readRenderTargetPixels(target,0,0,256,128,pixels);return pixels;};
+const difference=(a,b)=>{let max=0,total=0;for(let i=0;i<a.length;i++)if(i%4!==3){const d=Math.abs(a[i]-b[i]);max=Math.max(max,d);total+=d;}return {max,total};};
+player.flashlight.intensity=.01;const ownOff=read();player.flashlight.intensity=400;const ownOn=read();
+const ownDelta=difference(ownOff,ownOn);results.push(`own lantern on heroine: pixel difference ${ownDelta.max} / total ${ownDelta.total}`);
+const ownView=player.lanternLightView.value.clone();
+player.lanternLightView.value.set(10000,10000,10000);const unmasked=read();
+const unmaskedDelta=difference(ownOn,unmasked);results.push(`control: removing ignore filter changes heroine pixels by ${unmaskedDelta.max}`);
+player.lanternLightView.value.copy(ownView);
+const ignored=player.ignoredLanternShadowDraws;results.push(`own shadow draws skipped ${ignored}`);
+player.visual.visible=false;
+const probe=new THREE.Mesh(new THREE.SphereGeometry(.3,24,16),new THREE.MeshStandardMaterial({color:0xdddddd}));probe.position.set(0,.9,-.8);scene.add(probe);player.flashlightTarget.position.copy(probe.position);
+player.flashlight.intensity=.01;const probeOff=read();player.flashlight.intensity=400;const probeOn=read();
+const probeDelta=difference(probeOff,probeOn);results.push(`world probe: lantern pixel difference ${probeDelta.max}`);
+scene.remove(probe);probe.geometry.dispose();probe.material.dispose();player.visual.visible=true;
+player.flashlight.intensity=.01;
+player.flashlightTarget.position.set(0,.9,0);
+const otherLight=new THREE.SpotLight(0xffffff,0,10,Math.PI/3,.5);otherLight.position.set(1,2,2);otherLight.target.position.set(0,.9,0);scene.add(otherLight,otherLight.target);
+const otherOff=read();otherLight.intensity=100;const otherOn=read();const otherDelta=difference(otherOff,otherOn);results.push(`external spotlight on heroine: pixel difference ${otherDelta.max}`);
+scene.remove(otherLight,otherLight.target);
+const restored=[];player.visual.traverse(o=>{if(o.isMesh)restored.push(o.geometry.drawRange.count>0);});
+const pass=maxOrbit<.0001&&ownDelta.max===0&&unmaskedDelta.max>10&&probeDelta.max>10&&otherDelta.max>10&&ignored>0&&restored.every(Boolean);
+results.push(pass?'PASS':'FAIL');
+if(!pass)console.error('Character pivot/light regression:',results.join('; '));
+renderer.setRenderTarget(saved);target.dispose();renderer.shadowMap.enabled=false;player.flashlight.intensity=0;
+for(const {o,visible,intensity} of snapshots){o.visible=visible;if(intensity!==undefined)o.intensity=intensity;}
+const out=document.createElement('pre');out.id='light-qa-results';out.textContent=results.join('\n');Object.assign(out.style,{position:'fixed',right:'12px',bottom:'12px',padding:'16px',background:'#fff',color:'#000',zIndex:200,fontSize:'16px'});document.body.append(out);

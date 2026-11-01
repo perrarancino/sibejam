@@ -64,7 +64,7 @@ export class HudManager {
       this.hpText.textContent = `${state.hp} HP`;
     }
     if (this.seedsText) {
-      this.seedsText.textContent = `🌰 ${state.seeds}`;
+      this.seedsText.textContent = `🌰 ${Number.isFinite(state.seeds) ? state.seeds : '∞'}`;
     }
     if (this.camsText) {
       this.camsText.textContent = `📷 ${state.freeCameras} free`;
@@ -90,16 +90,16 @@ export class HudManager {
       <div class="gdd-section">
         <h4>🌰 Строительство и Экономика</h4>
         <div class="gdd-grid">
-          <div class="gdd-item"><div class="gdd-key">Стартовый баланс</div><div class="gdd-val">${gdd.economy.startingSeeds} семян, ${gdd.economy.freeCameras} бесплатные камеры</div></div>
+          <div class="gdd-item"><div class="gdd-key">Стартовый баланс</div><div class="gdd-val">${Number.isFinite(gdd.economy.startingSeeds) ? gdd.economy.startingSeeds : '∞'} семян, ${gdd.economy.freeCameras} бесплатные камеры</div></div>
           <div class="gdd-item"><div class="gdd-key">Камера наблюдения</div><div class="gdd-val">${gdd.economy.cameraCost} семян (угол 90°, дальность 10м)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Напольные шипы (авто)</div><div class="gdd-val">${gdd.economy.floorSpikes.cost} семян (30 урона / 1.5 сек)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Устройство с дротиками (авто)</div><div class="gdd-val">${gdd.economy.dartDevice.cost} семян (25 урона/сек)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Мина (авто, одноразовая)</div><div class="gdd-val">${gdd.economy.mine.cost} семян (100 урона, взрыв)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Забор с канатами (авто)</div><div class="gdd-val">${gdd.economy.electricFence.cost} семян (40 урона/сек)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Пакет замедляющей жидкости</div><div class="gdd-val">${gdd.economy.slowLiquidPacket.cost} семян (-50% скорости, 6 сек)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Бревно</div><div class="gdd-val">${gdd.economy.log.cost} семян (50 урона + сбивание с ног)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Огнемёт</div><div class="gdd-val">${gdd.economy.flamethrower.cost} семян (80+20 урона, AoE)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Пушка (смесь ярости)</div><div class="gdd-val">${gdd.economy.cannon.cost} семян (монстр бьёт монстров, 8 сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Напольные шипы (авто)</div><div class="gdd-val">${gdd.economy.floorSpikes.cost} семян (${gdd.economy.floorSpikes.damage} урона / ${gdd.economy.floorSpikes.intervalSec} сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Устройство с дротиками (авто)</div><div class="gdd-val">${gdd.economy.dartDevice.cost} семян (${gdd.economy.dartDevice.damage} урона/сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Мина (авто, одноразовая)</div><div class="gdd-val">${gdd.economy.mine.cost} семян (${gdd.economy.mine.damage} урона, взрыв)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Забор с канатами (авто)</div><div class="gdd-val">${gdd.economy.electricFence.cost} семян (замедление на 25%)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Пакет замедляющей жидкости</div><div class="gdd-val">${gdd.economy.slowLiquidPacket.cost} семян (-50% скорости, 30 сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Бревно</div><div class="gdd-val">${gdd.economy.log.cost} семян (${gdd.economy.log.damage} урона, катится вперёд)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Огнемёт</div><div class="gdd-val">${gdd.economy.flamethrower.cost} семян (вращается 30 сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Пушка (смесь ярости)</div><div class="gdd-val">${gdd.economy.cannon.cost} семян (до трёх монстров переходят на вашу сторону)</div></div>
         </div>
       </div>
 

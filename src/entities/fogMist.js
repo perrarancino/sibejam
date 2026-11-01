@@ -93,10 +93,10 @@ export class FogMistManager {
         float cloud = snoise(flow + vec2(warp * 0.4 + uTime * 0.035, -uTime * 0.02));
         float fine = snoise(flow * 1.7 + vec2(-uTime * 0.018, uTime * 0.027));
         float veil = smoothstep(3.0, 11.0, dist + cloud * 0.38 + warp * 0.18);
-        float opaqueFog = smoothstep(9.5, 16.0, dist);
+        float opaqueFog = smoothstep(11.5, 18.0, dist);
         float variation = clamp(0.9 + cloud * 0.07 + fine * 0.035, 0.62, 1.0);
-        vec3 fogColor = mix(vec3(0.045, 0.035, 0.06), vec3(0.12, 0.10, 0.145), clamp(0.5 + 0.25 * cloud, 0.0, 1.0));
-        float alpha = mix(clamp(veil * 0.82 * variation, 0.0, 0.82), 1.0, opaqueFog);
+        vec3 fogColor = mix(vec3(0.055, 0.045, 0.075), vec3(0.135, 0.115, 0.16), clamp(0.5 + 0.25 * cloud, 0.0, 1.0));
+        float alpha = mix(clamp(veil * 0.74 * variation, 0.0, 0.74), 1.0, opaqueFog);
         for (int i = 0; i < 16; i++) {
           if (i >= uCameraLightCount) break;
           vec4 beam = uCameraLights[i];

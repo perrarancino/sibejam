@@ -28265,9 +28265,9 @@
   ],
   "settings": {
     "mapSize": 41,
-    "ambient": 0.27,
-    "sky": 0.62,
-    "moon": 0.58,
-    "exposure": 0.92
+    "ambient": 0.36,
+    "sky": 0.8,
+    "moon": 0.74,
+    "exposure": 1.04
   }
 }
