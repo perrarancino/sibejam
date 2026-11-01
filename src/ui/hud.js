@@ -82,7 +82,7 @@ export class HudManager {
           <div class="gdd-item"><div class="gdd-key">Здоровье</div><div class="gdd-val">${gdd.heroine.maxHp} HP (восстановление между волнами)</div></div>
           <div class="gdd-item"><div class="gdd-key">Скорость ходьбы</div><div class="gdd-val">${gdd.heroine.walkSpeed} м/с</div></div>
           <div class="gdd-item"><div class="gdd-key">Скорость бега (Shift)</div><div class="gdd-val">${gdd.heroine.runSpeed} м/с</div></div>
-          <div class="gdd-item"><div class="gdd-key">Радиус фонаря</div><div class="gdd-val">${gdd.heroine.lanternRadius} м (активирует ловушки)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Радиус фонаря</div><div class="gdd-val">${gdd.heroine.lanternRadius} м (убивает Призрака светом)</div></div>
           <div class="gdd-item"><div class="gdd-key">Протирка камеры (E)</div><div class="gdd-val">${gdd.heroine.wipeCameraDuration} сек</div></div>
         </div>
       </div>
@@ -92,8 +92,14 @@ export class HudManager {
         <div class="gdd-grid">
           <div class="gdd-item"><div class="gdd-key">Стартовый баланс</div><div class="gdd-val">${gdd.economy.startingSeeds} семян, ${gdd.economy.freeCameras} бесплатные камеры</div></div>
           <div class="gdd-item"><div class="gdd-key">Камера наблюдения</div><div class="gdd-val">${gdd.economy.cameraCost} семян (угол 90°, дальность 10м)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Освященные шипы</div><div class="gdd-val">${gdd.economy.holySpikesCost} семян (30 урона / 1.5 сек на свету)</div></div>
-          <div class="gdd-item"><div class="gdd-key">Святая смола</div><div class="gdd-val">${gdd.economy.holyTarCost} семян (замедление 50%)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Напольные шипы (авто)</div><div class="gdd-val">${gdd.economy.floorSpikes.cost} семян (30 урона / 1.5 сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Устройство с дротиками (авто)</div><div class="gdd-val">${gdd.economy.dartDevice.cost} семян (25 урона/сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Мина (авто, одноразовая)</div><div class="gdd-val">${gdd.economy.mine.cost} семян (100 урона, взрыв)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Забор с канатами (авто)</div><div class="gdd-val">${gdd.economy.electricFence.cost} семян (40 урона/сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Пакет замедляющей жидкости</div><div class="gdd-val">${gdd.economy.slowLiquidPacket.cost} семян (-50% скорости, 6 сек)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Бревно</div><div class="gdd-val">${gdd.economy.log.cost} семян (50 урона + сбивание с ног)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Огнемёт</div><div class="gdd-val">${gdd.economy.flamethrower.cost} семян (80+20 урона, AoE)</div></div>
+          <div class="gdd-item"><div class="gdd-key">Пушка (смесь ярости)</div><div class="gdd-val">${gdd.economy.cannon.cost} семян (монстр бьёт монстров, 8 сек)</div></div>
         </div>
       </div>
 
@@ -110,9 +116,11 @@ export class HudManager {
       <div class="gdd-section">
         <h4>🎃 Бестиарий (Враги из могильных дыр)</h4>
         <div class="gdd-grid">
-          <div class="gdd-item"><div class="gdd-key">Катун (Мини-тыковка)</div><div class="gdd-val">${gdd.bestiary.katun.hp} HP, скорость в тумане x1.5, бежит к реликвиям</div></div>
-          <div class="gdd-item"><div class="gdd-key">Камикадзе (Прыгун)</div><div class="gdd-val">${gdd.bestiary.kamikaze.hp} HP, цель — камеры, взрывом ослепляет объектив</div></div>
-          <div class="gdd-item"><div class="gdd-key">Набухшая тыква</div><div class="gdd-val">${gdd.bestiary.swollen.hp} HP, 2 отскока, взрывает ловушки и камеры</div></div>
+          <div class="gdd-item"><div class="gdd-key">Призрак</div><div class="gdd-val">${gdd.bestiary.ghost.hp} HP, награда ${gdd.bestiary.ghost.dropsSeeds} 🌰 — додж-фазы, проходит сквозь ловушки, гибнет от света лампы</div></div>
+          <div class="gdd-item"><div class="gdd-key">Гнилой прыгун (Камикадзе)</div><div class="gdd-val">${gdd.bestiary.kamikaze.hp} HP, награда ${gdd.bestiary.kamikaze.dropsSeeds} 🌰 — цель камеры, ослепляет объектив</div></div>
+          <div class="gdd-item"><div class="gdd-key">Тыквоголовый</div><div class="gdd-val">${gdd.bestiary.pumpkinhead.hp} HP, награда ${gdd.bestiary.pumpkinhead.dropsSeeds} 🌰 — зомби с тыквой, ближний бой</div></div>
+          <div class="gdd-item"><div class="gdd-key">Пугало</div><div class="gdd-val">${gdd.bestiary.scarecrow.hp} HP, награда ${gdd.bestiary.scarecrow.dropsSeeds} 🌰 — медленный прыжок, выпускает ворон на расстоянии</div></div>
+          <div class="gdd-item"><div class="gdd-key">Джек тыква (БОСС)</div><div class="gdd-val">${gdd.bestiary.jackPumpkin.hp} HP, награда ${gdd.bestiary.jackPumpkin.dropsSeeds} 🌰 — тыква с косой, аналог смерти, невосприимчив к ярости</div></div>
         </div>
       </div>
 

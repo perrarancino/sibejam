@@ -7,6 +7,7 @@ import { CAMERA_CONFIG } from './cameras.js';
 import { TRAPS_CONFIG } from './traps.js';
 import { BESTIARY_CONFIG } from './bestiary.js';
 import { ENVIRONMENT_CONFIG } from './environment.js';
+import { AUDIO_CATALOG } from './audioCatalog.js';
 
 export {
   HEROINE_CONFIG,
@@ -14,7 +15,8 @@ export {
   CAMERA_CONFIG,
   TRAPS_CONFIG,
   BESTIARY_CONFIG,
-  ENVIRONMENT_CONFIG
+  ENVIRONMENT_CONFIG,
+  AUDIO_CATALOG
 };
 
 export const GAME_DESIGN = {
@@ -24,6 +26,7 @@ export const GAME_DESIGN = {
   traps: TRAPS_CONFIG,
   bestiary: BESTIARY_CONFIG,
   environment: ENVIRONMENT_CONFIG,
+  audio: AUDIO_CATALOG,
   fogOfWar: ENVIRONMENT_CONFIG.fogOfWar,
   specialMechanics: ENVIRONMENT_CONFIG.specialMechanics
 };
