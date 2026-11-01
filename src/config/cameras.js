@@ -10,6 +10,7 @@ export const CAMERA_CONFIG = {
     cooldownSec: 15.0, // кулдаун вспышки (15 сек)
     stunDurationSec: 3.0, // время оглушения врагов в конусе (3 сек)
     fogPushbackMeters: 2.5, // туман отбрасывается назад на пару метров
+    revealsGhost: true, // вспышка материализует Призрака: он становится видимым и уязвимым для ловушек (см. BESTIARY_CONFIG.ghost)
     key: 'Space' // клавиша активации в режиме камеры
   },
   failure: {

@@ -107,7 +107,7 @@ export class HudManager {
         <h4>📷 Камеры Наблюдения и Способности</h4>
         <div class="gdd-grid">
           <div class="gdd-item"><div class="gdd-key">Конус света</div><div class="gdd-val">90°, пробивает туман на ${gdd.surveillanceCamera.rangeMeters} метров</div></div>
-          <div class="gdd-item"><div class="gdd-key">Святая вспышка (Space)</div><div class="gdd-val">Стан 3 сек, отброс тумана, КД 15 сек</div></div>
+          <div class="gdd-item"><div class="gdd-key">Святая вспышка (Space)</div><div class="gdd-val">Стан 3 сек, отброс тумана, КД 15 сек, материализует Призрака</div></div>
           <div class="gdd-item"><div class="gdd-key">Режим просмотра</div><div class="gdd-val">Tab + 1–4, риск: Агата неподвижна в мире</div></div>
           <div class="gdd-item"><div class="gdd-key">Поломка</div><div class="gdd-val">Камикадзе заливает слизью -> сектор гаснет</div></div>
         </div>
@@ -116,7 +116,7 @@ export class HudManager {
       <div class="gdd-section">
         <h4>🎃 Бестиарий (Враги из могильных дыр)</h4>
         <div class="gdd-grid">
-          <div class="gdd-item"><div class="gdd-key">Призрак</div><div class="gdd-val">${gdd.bestiary.ghost.hp} HP, награда ${gdd.bestiary.ghost.dropsSeeds} 🌰 — додж-фазы, проходит сквозь ловушки, гибнет от света лампы</div></div>
+          <div class="gdd-item"><div class="gdd-key">Призрак</div><div class="gdd-val">${gdd.bestiary.ghost.hp} HP, награда ${gdd.bestiary.ghost.dropsSeeds} 🌰 — всегда полупрозрачен: не активирует ловушки и не получает от них урон; после Святой вспышки становится видимым и его домажат любые ловушки; гибнет от света лампы</div></div>
           <div class="gdd-item"><div class="gdd-key">Гнилой прыгун (Камикадзе)</div><div class="gdd-val">${gdd.bestiary.kamikaze.hp} HP, награда ${gdd.bestiary.kamikaze.dropsSeeds} 🌰 — цель камеры, ослепляет объектив</div></div>
           <div class="gdd-item"><div class="gdd-key">Тыквоголовый</div><div class="gdd-val">${gdd.bestiary.pumpkinhead.hp} HP, награда ${gdd.bestiary.pumpkinhead.dropsSeeds} 🌰 — зомби с тыквой, ближний бой</div></div>
           <div class="gdd-item"><div class="gdd-key">Пугало</div><div class="gdd-val">${gdd.bestiary.scarecrow.hp} HP, награда ${gdd.bestiary.scarecrow.dropsSeeds} 🌰 — медленный прыжок, выпускает ворон на расстоянии</div></div>
